@@ -1,24 +1,39 @@
-import type { Agent, DatasetInfo } from "./types";
+import type {
+	Agent,
+	DatasetInfo,
+	ChunkingType,
+	EmbeddingModelInfo,
+	DistanceMetric,
+} from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
-// Swap these to your real backend endpoints.
-// For now they try a Next.js proxy (/api/*) first, then fall back to API_BASE.
-const AGENTS_URLS = [
-	"/api/catalog/agents",
-	`${API_BASE}/catalog/agents`,
-].filter(Boolean);
-const DATASETS_URLS = [
-	"/api/catalog/datasets",
-	`${API_BASE}/catalog/datasets`,
-].filter(Boolean);
+// Prefer Next proxy /api/* during dev; fallback to API_BASE if set
+const urls = {
+	agents: ["/api/catalog/agents", `${API_BASE}/catalog/agents`].filter(Boolean),
+	datasets: ["/api/catalog/datasets", `${API_BASE}/catalog/datasets`].filter(
+		Boolean
+	),
+	chunking: [
+		"/api/catalog/chunking-types",
+		`${API_BASE}/catalog/chunking-types`,
+	].filter(Boolean),
+	embedding: [
+		"/api/catalog/embedding-models",
+		`${API_BASE}/catalog/embedding-models`,
+	].filter(Boolean),
+	distances: [
+		"/api/catalog/distance-metrics",
+		`${API_BASE}/catalog/distance-metrics`,
+	].filter(Boolean),
+};
 
-async function tryFetch<T>(urls: string[]): Promise<T> {
+async function tryFetch<T>(u: string[]): Promise<T> {
 	let lastErr: any;
-	for (const u of urls) {
+	for (const url of u) {
 		try {
-			const res = await fetch(u, { cache: "no-store" });
-			if (!res.ok) throw new Error(`${u} -> ${res.status}`);
+			const res = await fetch(url, { cache: "no-store" });
+			if (!res.ok) throw new Error(`${url} -> ${res.status}`);
 			return (await res.json()) as T;
 		} catch (e) {
 			lastErr = e;
@@ -27,10 +42,13 @@ async function tryFetch<T>(urls: string[]): Promise<T> {
 	throw lastErr ?? new Error("fetch failed");
 }
 
-export async function fetchAgents(): Promise<Agent[]> {
-	return tryFetch<Agent[]>(AGENTS_URLS);
-}
-
-export async function fetchDatasets(): Promise<DatasetInfo[]> {
-	return tryFetch<DatasetInfo[]>(DATASETS_URLS);
-}
+export const fetchAgents = (): Promise<Agent[]> =>
+	tryFetch<Agent[]>(urls.agents);
+export const fetchDatasets = (): Promise<DatasetInfo[]> =>
+	tryFetch<DatasetInfo[]>(urls.datasets);
+export const fetchChunkingTypes = (): Promise<ChunkingType[]> =>
+	tryFetch<ChunkingType[]>(urls.chunking);
+export const fetchEmbeddingModels = (): Promise<EmbeddingModelInfo[]> =>
+	tryFetch<EmbeddingModelInfo[]>(urls.embedding);
+export const fetchDistanceMetrics = (): Promise<DistanceMetric[]> =>
+	tryFetch<DistanceMetric[]>(urls.distances);

@@ -48,8 +48,7 @@ export default function ConfigList({
 							</div>
 							<div className="text-xs text-zinc-500">
 								Updated {new Date(c.updatedAt).toLocaleString()} • Agents:{" "}
-								{c.config.agents.length} • Output:{" "}
-								{c.config.evaluation.output_dir || "results"}
+								{c.config.agents.length}
 							</div>
 						</div>
 						<div className="flex items-center gap-2">

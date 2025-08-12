@@ -11,9 +11,18 @@ import type {
 	Agent,
 	DatasetInfo,
 	SavedConfig,
+	ChunkingType,
+	EmbeddingModelInfo,
+	DistanceMetric,
 	ExperimentConfig,
 } from "../lib/types";
-import { fetchAgents, fetchDatasets } from "../lib/api";
+import {
+	fetchAgents,
+	fetchDatasets,
+	fetchChunkingTypes,
+	fetchEmbeddingModels,
+	fetchDistanceMetrics,
+} from "../lib/api";
 import { listConfigs, saveNew, deleteConfig, getConfig } from "../lib/storage";
 
 type ViewState =
@@ -24,22 +33,37 @@ type ViewState =
 export default function Page() {
 	const [active, setActive] = useState<"configs" | "results">("configs");
 
+	// catalogs
 	const [agents, setAgents] = useState<Agent[]>([]);
 	const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
+	const [chunkingTypes, setChunkingTypes] = useState<ChunkingType[]>([]);
+	const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModelInfo[]>(
+		[]
+	);
+	const [distanceMetrics, setDistanceMetrics] = useState<DistanceMetric[]>([]);
 	const [catalogLoaded, setCatalogLoaded] = useState(false);
 
+	// saved configs
 	const [saved, setSaved] = useState<SavedConfig[]>(listConfigs());
 	const [view, setView] = useState<ViewState>({ mode: "list" });
 
-	// Load agents/datasets once
 	useEffect(() => {
 		let mounted = true;
 		(async () => {
 			try {
-				const [a, d] = await Promise.all([fetchAgents(), fetchDatasets()]);
+				const [a, d, ct, em, dm] = await Promise.all([
+					fetchAgents(),
+					fetchDatasets(),
+					fetchChunkingTypes(),
+					fetchEmbeddingModels(),
+					fetchDistanceMetrics(),
+				]);
 				if (!mounted) return;
 				setAgents(a);
 				setDatasets(d);
+				setChunkingTypes(ct);
+				setEmbeddingModels(em);
+				setDistanceMetrics(dm);
 			} catch {
 				// leave arrays empty if fetch fails
 			} finally {
@@ -58,7 +82,6 @@ export default function Page() {
 	};
 
 	const saveConfig = (cfg: ExperimentConfig): SavedConfig => {
-		// Ensure the config captures the current agents snapshot
 		const materialized: ExperimentConfig = { ...cfg, agents: agents };
 		const savedItem = saveNew({
 			name: materialized.name || "Untitled",
@@ -120,10 +143,13 @@ export default function Page() {
 									<ConfigEditor
 										agents={agents}
 										datasets={datasets}
+										chunkingTypes={chunkingTypes}
+										embeddingModels={embeddingModels}
+										distanceMetrics={distanceMetrics}
 										onCancel={backToList}
-										onSave={(savedItem) => {
-											setView({ mode: "detail", id: savedItem.id });
-										}}
+										onSave={(savedItem) =>
+											setView({ mode: "detail", id: savedItem.id })
+										}
 										saveConfig={saveConfig}
 									/>
 								)}

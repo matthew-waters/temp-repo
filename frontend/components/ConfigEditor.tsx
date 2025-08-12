@@ -6,6 +6,9 @@ import type {
 	DatasetInfo,
 	ExperimentConfig,
 	SavedConfig,
+	ChunkingType,
+	EmbeddingModelInfo,
+	DistanceMetric,
 } from "../lib/types";
 import { emptyConfig } from "../lib/defaults";
 import yaml from "js-yaml";
@@ -14,6 +17,9 @@ import { FileJson, Save } from "lucide-react";
 type Props = {
 	agents: Agent[];
 	datasets: DatasetInfo[];
+	chunkingTypes: ChunkingType[];
+	embeddingModels: EmbeddingModelInfo[];
+	distanceMetrics: DistanceMetric[];
 	onCancel: () => void;
 	onSave: (saved: SavedConfig) => void;
 	saveConfig: (cfg: ExperimentConfig) => SavedConfig;
@@ -22,13 +28,16 @@ type Props = {
 export default function ConfigEditor({
 	agents,
 	datasets,
+	chunkingTypes,
+	embeddingModels,
+	distanceMetrics,
 	onCancel,
 	onSave,
 	saveConfig,
 }: Props) {
 	const [cfg, setCfg] = useState<ExperimentConfig>(() => {
 		const c = emptyConfig();
-		c.agents = agents; // snapshot of available agents (read-only)
+		c.agents = agents; // snapshot of available agents
 		return c;
 	});
 
@@ -43,6 +52,11 @@ export default function ConfigEditor({
 	};
 
 	const allAgentIds = useMemo(() => agents.map((a) => a.id), [agents]);
+	const parseCSV = (s: string): string[] =>
+		s
+			.split(",")
+			.map((x) => x.trim())
+			.filter(Boolean);
 
 	const onSelectDataset = (
 		key: "ingestion_corpus" | "test_set",
@@ -55,11 +69,30 @@ export default function ConfigEditor({
 		update(["data_ingestion", key, "document_type"], ds.document_type);
 	};
 
-	const parseCSV = (s: string): string[] =>
-		s
-			.split(",")
-			.map((x) => x.trim())
-			.filter(Boolean);
+	const onSelectChunking = (type: string) => {
+		update(["chunking", "chunking_type"], type);
+	};
+
+	const onSelectEmbeddingModel = (id: string) => {
+		const m = embeddingModels.find((x) => x.id === id);
+		if (!m) return;
+		update(
+			["qdrant_db", "parameters", "embedding", "embedding_type"],
+			m.embedding_type
+		);
+		update(
+			["qdrant_db", "parameters", "embedding", "embedding_model"],
+			m.model
+		);
+		update(
+			["qdrant_db", "parameters", "embedding", "embedding_length"],
+			m.embedding_length
+		);
+	};
+
+	const onSelectDistance = (dm: string) => {
+		update(["qdrant_db", "parameters", "embedding", "distance_metric"], dm);
+	};
 
 	const downloadYAML = () => {
 		const out = { experiment: cfg };
@@ -75,6 +108,7 @@ export default function ConfigEditor({
 
 	return (
 		<div className="space-y-6">
+			{/* Header actions */}
 			<div className="flex items-center justify-between">
 				<h2 className="text-xl font-semibold">Create New Experiment Config</h2>
 				<div className="flex gap-2">
@@ -120,15 +154,23 @@ export default function ConfigEditor({
 					</div>
 
 					<div className="space-y-2">
-						<label className="text-sm font-medium">Output Dir</label>
-						<input
+						<label className="text-sm font-medium">Chunking Type</label>
+						<select
 							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-							value={cfg.evaluation.output_dir}
-							onChange={(e) =>
-								update(["evaluation", "output_dir"], e.target.value)
-							}
-							placeholder="results"
-						/>
+							value={cfg.chunking.chunking_type}
+							onChange={(e) => onSelectChunking(e.target.value)}
+						>
+							<option value="">
+								{chunkingTypes.length
+									? "Select chunker…"
+									: "No chunkers available"}
+							</option>
+							{chunkingTypes.map((ct) => (
+								<option key={ct} value={ct}>
+									{ct}
+								</option>
+							))}
+						</select>
 					</div>
 				</div>
 			</SectionCard>
@@ -167,19 +209,80 @@ export default function ConfigEditor({
 				</div>
 			</SectionCard>
 
-			<SectionCard title="Chunking & Embedding" icon={<span>🧩</span>}>
-				<div className="grid md:grid-cols-3 gap-4">
+			<SectionCard title="Embedding" icon={<span>🧠</span>}>
+				<div className="grid md:grid-cols-2 gap-4">
 					<div className="space-y-2">
-						<label className="text-sm font-medium">Chunking Type</label>
-						<input
+						<label className="text-sm font-medium">Embedding Model</label>
+						<select
 							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-							value={cfg.chunking.chunking_type}
-							onChange={(e) =>
-								update(["chunking", "chunking_type"], e.target.value)
+							value={
+								// try to find a matching catalog item; otherwise fallback to empty
+								embeddingModels.find(
+									(m) =>
+										m.embedding_type ===
+											cfg.qdrant_db.parameters.embedding.embedding_type &&
+										m.model ===
+											cfg.qdrant_db.parameters.embedding.embedding_model
+								)?.id ?? ""
 							}
-							placeholder="recursive_character"
+							onChange={(e) => onSelectEmbeddingModel(e.target.value)}
+						>
+							<option value="">
+								{embeddingModels.length
+									? "Select embedding…"
+									: "No embeddings available"}
+							</option>
+							{embeddingModels.map((m) => (
+								<option key={m.id} value={m.id}>
+									{m.name}
+								</option>
+							))}
+						</select>
+						<div className="text-xs text-zinc-500">
+							Type: {cfg.qdrant_db.parameters.embedding.embedding_type || "—"} •
+							Model: {cfg.qdrant_db.parameters.embedding.embedding_model || "—"}
+						</div>
+					</div>
+
+					<div className="space-y-2">
+						<label className="text-sm font-medium">Dimensionality</label>
+						<input
+							type="number"
+							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
+							value={cfg.qdrant_db.parameters.embedding.embedding_length}
+							onChange={(e) =>
+								update(
+									["qdrant_db", "parameters", "embedding", "embedding_length"],
+									Number(e.target.value)
+								)
+							}
 						/>
 					</div>
+
+					<div className="space-y-2">
+						<label className="text-sm font-medium">Distance Metric</label>
+						<select
+							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
+							value={cfg.qdrant_db.parameters.embedding.distance_metric}
+							onChange={(e) => onSelectDistance(e.target.value)}
+						>
+							<option value="">
+								{distanceMetrics.length
+									? "Select distance…"
+									: "No metrics available"}
+							</option>
+							{distanceMetrics.map((dm) => (
+								<option key={dm} value={dm}>
+									{dm}
+								</option>
+							))}
+						</select>
+					</div>
+				</div>
+			</SectionCard>
+
+			<SectionCard title="Chunking Parameters" icon={<span>🧩</span>}>
+				<div className="grid md:grid-cols-2 gap-4">
 					<div className="space-y-2">
 						<label className="text-sm font-medium">Chunk Size</label>
 						<input
@@ -207,63 +310,6 @@ export default function ConfigEditor({
 								)
 							}
 						/>
-					</div>
-				</div>
-
-				<div className="grid md:grid-cols-2 gap-4 mt-4">
-					<div className="space-y-2">
-						<label className="text-sm font-medium">Embedding Model</label>
-						<input
-							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-							value={cfg.qdrant_db.parameters.embedding.embedding_model}
-							onChange={(e) =>
-								update(
-									["qdrant_db", "parameters", "embedding", "embedding_model"],
-									e.target.value
-								)
-							}
-						/>
-						<div className="grid grid-cols-3 gap-2">
-							<input
-								placeholder="Type"
-								className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-								value={cfg.qdrant_db.parameters.embedding.embedding_type}
-								onChange={(e) =>
-									update(
-										["qdrant_db", "parameters", "embedding", "embedding_type"],
-										e.target.value
-									)
-								}
-							/>
-							<input
-								type="number"
-								placeholder="Length"
-								className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-								value={cfg.qdrant_db.parameters.embedding.embedding_length}
-								onChange={(e) =>
-									update(
-										[
-											"qdrant_db",
-											"parameters",
-											"embedding",
-											"embedding_length",
-										],
-										Number(e.target.value)
-									)
-								}
-							/>
-							<input
-								placeholder="Distance"
-								className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-								value={cfg.qdrant_db.parameters.embedding.distance_metric}
-								onChange={(e) =>
-									update(
-										["qdrant_db", "parameters", "embedding", "distance_metric"],
-										e.target.value
-									)
-								}
-							/>
-						</div>
 					</div>
 				</div>
 			</SectionCard>

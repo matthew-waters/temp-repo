@@ -28,16 +28,10 @@ export default function ConfigDetail({ item, onBack }: Props) {
 			</div>
 
 			<SectionCard title="Overview" icon={<span>🧪</span>}>
-				<div className="grid md:grid-cols-3 gap-4">
+				<div className="grid md:grid-cols-2 gap-4">
 					<div>
 						<div className="text-xs text-zinc-500">Experiment Name</div>
 						<div className="font-medium">{config.name || "—"}</div>
-					</div>
-					<div>
-						<div className="text-xs text-zinc-500">Output Dir</div>
-						<div className="font-medium">
-							{config.evaluation.output_dir || "results"}
-						</div>
 					</div>
 					<div>
 						<div className="text-xs text-zinc-500">Agents Included</div>
