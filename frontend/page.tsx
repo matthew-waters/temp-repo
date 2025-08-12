@@ -1,27 +1,37 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Sidebar from "../components/Sidebar";
-import GlobalDefaultsForm from "../components/GlobalDefaultsForm";
-import AgentsManager from "../components/AgentsManager";
-import EvaluationSuite from "../components/EvaluationSuite";
+import ConfigList from "../components/ConfigList";
+import ConfigDetail from "../components/ConfigDetail";
+import ConfigEditor from "../components/ConfigEditor";
 import ResultsView from "../components/ResultsView";
-import { defaultConfig } from "../lib/defaults";
-import { updateAtPath } from "../lib/update";
-import type { Agent, DatasetInfo, ExperimentConfig } from "../lib/types";
+import type {
+	Agent,
+	DatasetInfo,
+	SavedConfig,
+	ExperimentConfig,
+} from "../lib/types";
 import { fetchAgents, fetchDatasets } from "../lib/api";
+import { listConfigs, saveNew, deleteConfig, getConfig } from "../lib/storage";
+
+type ViewState =
+	| { mode: "list" }
+	| { mode: "detail"; id: string }
+	| { mode: "create" };
 
 export default function Page() {
 	const [active, setActive] = useState<"configs" | "results">("configs");
-	const [cfg, setCfg] = useState<ExperimentConfig>(defaultConfig);
-	const [selectedAgentIndex, setSelectedAgentIndex] = useState(0);
 
 	const [agents, setAgents] = useState<Agent[]>([]);
 	const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
-	const [loading, setLoading] = useState({ agents: true, datasets: true });
+	const [catalogLoaded, setCatalogLoaded] = useState(false);
 
-	// Load agents and datasets from API
+	const [saved, setSaved] = useState<SavedConfig[]>(listConfigs());
+	const [view, setView] = useState<ViewState>({ mode: "list" });
+
+	// Load agents/datasets once
 	useEffect(() => {
 		let mounted = true;
 		(async () => {
@@ -30,12 +40,10 @@ export default function Page() {
 				if (!mounted) return;
 				setAgents(a);
 				setDatasets(d);
-				// reflect in config (read-only)
-				setCfg((prev) => ({ ...prev, agents: a }));
 			} catch {
-				// keep empty arrays on failure
+				// leave arrays empty if fetch fails
 			} finally {
-				if (mounted) setLoading({ agents: false, datasets: false });
+				if (mounted) setCatalogLoaded(true);
 			}
 		})();
 		return () => {
@@ -43,10 +51,27 @@ export default function Page() {
 		};
 	}, []);
 
-	const updateCfg = (path: (string | number)[], value: any) =>
-		setCfg((prev) => updateAtPath(prev, path, value));
+	const openDetail = (id: string) => setView({ mode: "detail", id });
+	const backToList = () => {
+		setSaved(listConfigs());
+		setView({ mode: "list" });
+	};
 
-	const allAgentIds = cfg.agents.map((a) => a.id);
+	const saveConfig = (cfg: ExperimentConfig): SavedConfig => {
+		// Ensure the config captures the current agents snapshot
+		const materialized: ExperimentConfig = { ...cfg, agents: agents };
+		const savedItem = saveNew({
+			name: materialized.name || "Untitled",
+			config: materialized,
+		});
+		setSaved(listConfigs());
+		return savedItem;
+	};
+
+	const currentDetail = useMemo(
+		() => (view.mode === "detail" ? getConfig(view.id) : undefined),
+		[view]
+	);
 
 	return (
 		<div className="min-h-screen w-full bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50">
@@ -60,7 +85,7 @@ export default function Page() {
 						</h1>
 						<p className="text-sm text-zinc-500 mt-1">
 							{active === "configs"
-								? "Global defaults, agents from backend, and one evaluation suite."
+								? "View saved configs, inspect details, or create a new config."
 								: "Load and explore results.json outputs from your runs."}
 						</p>
 					</header>
@@ -75,21 +100,33 @@ export default function Page() {
 								transition={{ duration: 0.2 }}
 								className="space-y-6"
 							>
-								<GlobalDefaultsForm
-									cfg={cfg}
-									updateCfg={updateCfg}
-									datasets={datasets}
-								/>
-								<AgentsManager
-									agents={agents}
-									selectedIndex={selectedAgentIndex}
-									onSelect={setSelectedAgentIndex}
-								/>
-								<EvaluationSuite
-									cfg={cfg}
-									updateCfg={updateCfg}
-									allAgentIds={allAgentIds}
-								/>
+								{view.mode === "list" && (
+									<ConfigList
+										items={saved}
+										onCreate={() => setView({ mode: "create" })}
+										onOpen={openDetail}
+										onDelete={(id) => {
+											deleteConfig(id);
+											setSaved(listConfigs());
+										}}
+									/>
+								)}
+
+								{view.mode === "detail" && currentDetail && (
+									<ConfigDetail item={currentDetail} onBack={backToList} />
+								)}
+
+								{view.mode === "create" && (
+									<ConfigEditor
+										agents={agents}
+										datasets={datasets}
+										onCancel={backToList}
+										onSave={(savedItem) => {
+											setView({ mode: "detail", id: savedItem.id });
+										}}
+										saveConfig={saveConfig}
+									/>
+								)}
 							</motion.div>
 						) : (
 							<motion.div
