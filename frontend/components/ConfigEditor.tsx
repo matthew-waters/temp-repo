@@ -37,7 +37,7 @@ export default function ConfigEditor({
 }: Props) {
 	const [cfg, setCfg] = useState<ExperimentConfig>(() => {
 		const c = emptyConfig();
-		c.agents = agents; // snapshot of available agents
+		c.agents = agents; // snapshot
 		return c;
 	});
 
@@ -69,9 +69,8 @@ export default function ConfigEditor({
 		update(["data_ingestion", key, "document_type"], ds.document_type);
 	};
 
-	const onSelectChunking = (type: string) => {
+	const onSelectChunking = (type: string) =>
 		update(["chunking", "chunking_type"], type);
-	};
 
 	const onSelectEmbeddingModel = (id: string) => {
 		const m = embeddingModels.find((x) => x.id === id);
@@ -90,9 +89,8 @@ export default function ConfigEditor({
 		);
 	};
 
-	const onSelectDistance = (dm: string) => {
-		update(["qdrant_db", "parameters", "embedding", "distance_metric"], dm);
-	};
+	const onSelectDistance = (dm: string) =>
+		update(["qdrant_db", "parameters", "distance_metric"], dm);
 
 	const downloadYAML = () => {
 		const out = { experiment: cfg };
@@ -108,7 +106,7 @@ export default function ConfigEditor({
 
 	return (
 		<div className="space-y-6">
-			{/* Header actions */}
+			{/* Header */}
 			<div className="flex items-center justify-between">
 				<h2 className="text-xl font-semibold">Create New Experiment Config</h2>
 				<div className="flex gap-2">
@@ -129,6 +127,7 @@ export default function ConfigEditor({
 				</div>
 			</div>
 
+			{/* Basics (name + description) */}
 			<SectionCard
 				title="Basics"
 				icon={<span>🧾</span>}
@@ -152,29 +151,20 @@ export default function ConfigEditor({
 							placeholder="My Experiment"
 						/>
 					</div>
-
-					<div className="space-y-2">
-						<label className="text-sm font-medium">Chunking Type</label>
-						<select
+					<div className="space-y-2 md:col-span-2">
+						<label className="text-sm font-medium">Description</label>
+						<textarea
 							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-							value={cfg.chunking.chunking_type}
-							onChange={(e) => onSelectChunking(e.target.value)}
-						>
-							<option value="">
-								{chunkingTypes.length
-									? "Select chunker…"
-									: "No chunkers available"}
-							</option>
-							{chunkingTypes.map((ct) => (
-								<option key={ct} value={ct}>
-									{ct}
-								</option>
-							))}
-						</select>
+							rows={3}
+							value={cfg.description ?? ""}
+							onChange={(e) => update(["description"], e.target.value)}
+							placeholder="What are you testing or comparing in this experiment?"
+						/>
 					</div>
 				</div>
 			</SectionCard>
 
+			{/* Datasets */}
 			<SectionCard title="Datasets" icon={<span>🗃️</span>}>
 				<div className="grid md:grid-cols-2 gap-4">
 					{(["ingestion_corpus", "test_set"] as const).map((k) => (
@@ -209,6 +199,7 @@ export default function ConfigEditor({
 				</div>
 			</SectionCard>
 
+			{/* Embedding */}
 			<SectionCard title="Embedding" icon={<span>🧠</span>}>
 				<div className="grid md:grid-cols-2 gap-4">
 					<div className="space-y-2">
@@ -216,7 +207,6 @@ export default function ConfigEditor({
 						<select
 							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
 							value={
-								// try to find a matching catalog item; otherwise fallback to empty
 								embeddingModels.find(
 									(m) =>
 										m.embedding_type ===
@@ -263,7 +253,7 @@ export default function ConfigEditor({
 						<label className="text-sm font-medium">Distance Metric</label>
 						<select
 							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-							value={cfg.qdrant_db.parameters.embedding.distance_metric}
+							value={cfg.qdrant_db.parameters.distance_metric}
 							onChange={(e) => onSelectDistance(e.target.value)}
 						>
 							<option value="">
@@ -281,8 +271,28 @@ export default function ConfigEditor({
 				</div>
 			</SectionCard>
 
+			{/* Chunking */}
 			<SectionCard title="Chunking Parameters" icon={<span>🧩</span>}>
-				<div className="grid md:grid-cols-2 gap-4">
+				<div className="grid md:grid-cols-3 gap-4">
+					<div className="space-y-2">
+						<label className="text-sm font-medium">Chunking Type</label>
+						<select
+							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
+							value={cfg.chunking.chunking_type}
+							onChange={(e) => onSelectChunking(e.target.value)}
+						>
+							<option value="">
+								{chunkingTypes.length
+									? "Select chunker…"
+									: "No chunkers available"}
+							</option>
+							{chunkingTypes.map((ct) => (
+								<option key={ct} value={ct}>
+									{ct}
+								</option>
+							))}
+						</select>
+					</div>
 					<div className="space-y-2">
 						<label className="text-sm font-medium">Chunk Size</label>
 						<input
@@ -314,6 +324,7 @@ export default function ConfigEditor({
 				</div>
 			</SectionCard>
 
+			{/* Evaluation */}
 			<SectionCard title="Evaluation" icon={<span>📊</span>}>
 				<div className="grid md:grid-cols-3 gap-4">
 					<div className="space-y-2 md:col-span-1">

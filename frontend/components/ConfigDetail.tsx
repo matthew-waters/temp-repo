@@ -42,6 +42,12 @@ export default function ConfigDetail({ item, onBack }: Props) {
 							).join(", ") || "—"}
 						</div>
 					</div>
+					{config.description && (
+						<div className="md:col-span-2">
+							<div className="text-xs text-zinc-500">Description</div>
+							<div className="text-sm mt-1">{config.description}</div>
+						</div>
+					)}
 				</div>
 			</SectionCard>
 
@@ -84,7 +90,7 @@ export default function ConfigDetail({ item, onBack }: Props) {
 								? `(${config.qdrant_db.parameters.embedding.embedding_model})`
 								: ""}
 							, dim {config.qdrant_db.parameters.embedding.embedding_length} •{" "}
-							{config.qdrant_db.parameters.embedding.distance_metric || "—"}
+							{config.qdrant_db.parameters.distance_metric || "—"}
 						</div>
 					</div>
 				</div>

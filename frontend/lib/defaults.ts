@@ -11,6 +11,7 @@ export const makeDefaultAgent = (n: number): Agent => ({
 
 export const emptyConfig = (): ExperimentConfig => ({
 	name: "",
+	description: "",
 	data_ingestion: {
 		ingestion_corpus: {
 			dataset_id: undefined,
@@ -29,13 +30,12 @@ export const emptyConfig = (): ExperimentConfig => ({
 				embedding_type: "",
 				embedding_model: "",
 				embedding_length: 0,
-				distance_metric: "cosine",
 			},
+			distance_metric: "", // NOW here
 		},
 	},
-	agents: [], // will be set when creating a config using available agents
+	agents: [],
 	evaluation: {
-		output_dir: "results",
 		metrics: {
 			agent: [] as string[],
 			retrieval: [] as string[],
