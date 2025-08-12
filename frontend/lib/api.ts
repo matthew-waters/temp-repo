@@ -4,11 +4,13 @@ import type {
 	ChunkingType,
 	EmbeddingModelInfo,
 	DistanceMetric,
+	AgentTypeInfo,
+	RetrieverSpec,
+	LLMProviderSpec,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
-// Prefer Next proxy /api/* during dev; fallback to API_BASE if set
 const urls = {
 	agents: ["/api/catalog/agents", `${API_BASE}/catalog/agents`].filter(Boolean),
 	datasets: ["/api/catalog/datasets", `${API_BASE}/catalog/datasets`].filter(
@@ -26,6 +28,17 @@ const urls = {
 		"/api/catalog/distance-metrics",
 		`${API_BASE}/catalog/distance-metrics`,
 	].filter(Boolean),
+
+	// NEW
+	agentTypes: [
+		"/api/catalog/agent-types",
+		`${API_BASE}/catalog/agent-types`,
+	].filter(Boolean),
+	retrievers: [
+		"/api/catalog/retrievers",
+		`${API_BASE}/catalog/retrievers`,
+	].filter(Boolean),
+	llms: ["/api/catalog/llms", `${API_BASE}/catalog/llms`].filter(Boolean),
 };
 
 async function tryFetch<T>(u: string[]): Promise<T> {
@@ -52,3 +65,11 @@ export const fetchEmbeddingModels = (): Promise<EmbeddingModelInfo[]> =>
 	tryFetch<EmbeddingModelInfo[]>(urls.embedding);
 export const fetchDistanceMetrics = (): Promise<DistanceMetric[]> =>
 	tryFetch<DistanceMetric[]>(urls.distances);
+
+// NEW
+export const fetchAgentTypes = (): Promise<AgentTypeInfo[]> =>
+	tryFetch<AgentTypeInfo[]>(urls.agentTypes);
+export const fetchRetrieverSpecs = (): Promise<RetrieverSpec[]> =>
+	tryFetch<RetrieverSpec[]>(urls.retrievers);
+export const fetchLLMProviders = (): Promise<LLMProviderSpec[]> =>
+	tryFetch<LLMProviderSpec[]>(urls.llms);

@@ -8,20 +8,26 @@ import ConfigDetail from "../components/ConfigDetail";
 import ConfigEditor from "../components/ConfigEditor";
 import ResultsView from "../components/ResultsView";
 import type {
-	Agent,
-	DatasetInfo,
 	SavedConfig,
+	ExperimentConfig,
+	// NEW types we fetch:
 	ChunkingType,
 	EmbeddingModelInfo,
 	DistanceMetric,
-	ExperimentConfig,
+	AgentTypeInfo,
+	RetrieverSpec,
+	LLMProviderSpec,
+	DatasetInfo,
 } from "../lib/types";
 import {
-	fetchAgents,
 	fetchDatasets,
 	fetchChunkingTypes,
 	fetchEmbeddingModels,
 	fetchDistanceMetrics,
+	// NEW
+	fetchAgentTypes,
+	fetchRetrieverSpecs,
+	fetchLLMProviders,
 } from "../lib/api";
 import { listConfigs, saveNew, deleteConfig, getConfig } from "../lib/storage";
 
@@ -34,14 +40,15 @@ export default function Page() {
 	const [active, setActive] = useState<"configs" | "results">("configs");
 
 	// catalogs
-	const [agents, setAgents] = useState<Agent[]>([]);
 	const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
 	const [chunkingTypes, setChunkingTypes] = useState<ChunkingType[]>([]);
 	const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModelInfo[]>(
 		[]
 	);
 	const [distanceMetrics, setDistanceMetrics] = useState<DistanceMetric[]>([]);
-	const [catalogLoaded, setCatalogLoaded] = useState(false);
+	const [agentTypes, setAgentTypes] = useState<AgentTypeInfo[]>([]);
+	const [retrievers, setRetrievers] = useState<RetrieverSpec[]>([]);
+	const [llmProviders, setLlmProviders] = useState<LLMProviderSpec[]>([]);
 
 	// saved configs
 	const [saved, setSaved] = useState<SavedConfig[]>(listConfigs());
@@ -51,23 +58,25 @@ export default function Page() {
 		let mounted = true;
 		(async () => {
 			try {
-				const [a, d, ct, em, dm] = await Promise.all([
-					fetchAgents(),
+				const [d, ct, em, dm, at, r, lp] = await Promise.all([
 					fetchDatasets(),
 					fetchChunkingTypes(),
 					fetchEmbeddingModels(),
 					fetchDistanceMetrics(),
+					fetchAgentTypes(),
+					fetchRetrieverSpecs(),
+					fetchLLMProviders(),
 				]);
 				if (!mounted) return;
-				setAgents(a);
 				setDatasets(d);
 				setChunkingTypes(ct);
 				setEmbeddingModels(em);
 				setDistanceMetrics(dm);
+				setAgentTypes(at);
+				setRetrievers(r);
+				setLlmProviders(lp);
 			} catch {
-				// leave arrays empty if fetch fails
-			} finally {
-				if (mounted) setCatalogLoaded(true);
+				// leave empty on failure
 			}
 		})();
 		return () => {
@@ -82,11 +91,8 @@ export default function Page() {
 	};
 
 	const saveConfig = (cfg: ExperimentConfig): SavedConfig => {
-		const materialized: ExperimentConfig = { ...cfg, agents: agents };
-		const savedItem = saveNew({
-			name: materialized.name || "Untitled",
-			config: materialized,
-		});
+		// cfg.agents already configured via editor; just persist
+		const savedItem = saveNew({ name: cfg.name || "Untitled", config: cfg });
 		setSaved(listConfigs());
 		return savedItem;
 	};
@@ -141,11 +147,13 @@ export default function Page() {
 
 								{view.mode === "create" && (
 									<ConfigEditor
-										agents={agents}
 										datasets={datasets}
 										chunkingTypes={chunkingTypes}
 										embeddingModels={embeddingModels}
 										distanceMetrics={distanceMetrics}
+										agentTypes={agentTypes}
+										retrievers={retrievers}
+										llmProviders={llmProviders}
 										onCancel={backToList}
 										onSave={(savedItem) =>
 											setView({ mode: "detail", id: savedItem.id })

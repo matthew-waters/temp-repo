@@ -9,37 +9,45 @@ import type {
 	ChunkingType,
 	EmbeddingModelInfo,
 	DistanceMetric,
+	AgentTypeInfo,
+	RetrieverSpec,
+	LLMProviderSpec,
 } from "../lib/types";
 import { emptyConfig } from "../lib/defaults";
 import yaml from "js-yaml";
 import { FileJson, Save } from "lucide-react";
+import AgentsConfigurator from "./AgentsConfigurator";
 
 type Props = {
-	agents: Agent[];
 	datasets: DatasetInfo[];
 	chunkingTypes: ChunkingType[];
 	embeddingModels: EmbeddingModelInfo[];
 	distanceMetrics: DistanceMetric[];
+	agentTypes: AgentTypeInfo[];
+	retrievers: RetrieverSpec[];
+	llmProviders: LLMProviderSpec[];
 	onCancel: () => void;
 	onSave: (saved: SavedConfig) => void;
 	saveConfig: (cfg: ExperimentConfig) => SavedConfig;
 };
 
 export default function ConfigEditor({
-	agents,
 	datasets,
 	chunkingTypes,
 	embeddingModels,
 	distanceMetrics,
+	agentTypes,
+	retrievers,
+	llmProviders,
 	onCancel,
 	onSave,
 	saveConfig,
 }: Props) {
-	const [cfg, setCfg] = useState<ExperimentConfig>(() => {
-		const c = emptyConfig();
-		c.agents = agents; // snapshot
-		return c;
-	});
+	const [cfg, setCfg] = useState<ExperimentConfig>(() => emptyConfig());
+
+	const setAgents = (next: Agent[]) => {
+		setCfg((prev) => ({ ...prev, agents: next }));
+	};
 
 	const update = (path: (string | number)[], value: any) => {
 		setCfg((prev) => {
@@ -51,7 +59,6 @@ export default function ConfigEditor({
 		});
 	};
 
-	const allAgentIds = useMemo(() => agents.map((a) => a.id), [agents]);
 	const parseCSV = (s: string): string[] =>
 		s
 			.split(",")
@@ -68,9 +75,6 @@ export default function ConfigEditor({
 		update(["data_ingestion", key, "data_path"], ds.data_path);
 		update(["data_ingestion", key, "document_type"], ds.document_type);
 	};
-
-	const onSelectChunking = (type: string) =>
-		update(["chunking", "chunking_type"], type);
 
 	const onSelectEmbeddingModel = (id: string) => {
 		const m = embeddingModels.find((x) => x.id === id);
@@ -89,11 +93,17 @@ export default function ConfigEditor({
 		);
 	};
 
-	const onSelectDistance = (dm: string) =>
-		update(["qdrant_db", "parameters", "distance_metric"], dm);
-
 	const downloadYAML = () => {
-		const out = { experiment: cfg };
+		// Default include_agents to all configured agent IDs if unset/empty
+		const include = cfg.evaluation.run.include_agents?.length
+			? cfg.evaluation.run.include_agents
+			: cfg.agents.map((a) => a.id);
+		const out = {
+			experiment: {
+				...cfg,
+				evaluation: { ...cfg.evaluation, run: { include_agents: include } },
+			},
+		};
 		const y = yaml.dump(out, { noRefs: true, lineWidth: 120 });
 		const blob = new Blob([y], { type: "text/yaml" });
 		const url = URL.createObjectURL(blob);
@@ -119,7 +129,20 @@ export default function ConfigEditor({
 					</button>
 					<button
 						type="button"
-						onClick={() => onSave(saveConfig(cfg))}
+						onClick={() => {
+							// Same default for include_agents on save
+							const include = cfg.evaluation.run.include_agents?.length
+								? cfg.evaluation.run.include_agents
+								: cfg.agents.map((a) => a.id);
+							const saved = saveConfig({
+								...cfg,
+								evaluation: {
+									...cfg.evaluation,
+									run: { include_agents: include },
+								},
+							});
+							onSave(saved);
+						}}
 						className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 px-3 py-2 text-sm shadow hover:opacity-90"
 					>
 						<Save size={14} /> Save Config
@@ -127,7 +150,7 @@ export default function ConfigEditor({
 				</div>
 			</div>
 
-			{/* Basics (name + description) */}
+			{/* Basics */}
 			<SectionCard
 				title="Basics"
 				icon={<span>🧾</span>}
@@ -201,8 +224,8 @@ export default function ConfigEditor({
 
 			{/* Embedding */}
 			<SectionCard title="Embedding" icon={<span>🧠</span>}>
-				<div className="grid md:grid-cols-2 gap-4">
-					<div className="space-y-2">
+				<div className="grid md:grid-cols-3 gap-4">
+					<div className="space-y-2 md:col-span-2">
 						<label className="text-sm font-medium">Embedding Model</label>
 						<select
 							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
@@ -234,7 +257,7 @@ export default function ConfigEditor({
 						</div>
 					</div>
 
-					<div className="space-y-2">
+					<div className="space-y-2 md:col-span-1">
 						<label className="text-sm font-medium">Dimensionality</label>
 						<input
 							type="number"
@@ -249,12 +272,17 @@ export default function ConfigEditor({
 						/>
 					</div>
 
-					<div className="space-y-2">
+					<div className="space-y-2 md:col-span-1">
 						<label className="text-sm font-medium">Distance Metric</label>
 						<select
 							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
 							value={cfg.qdrant_db.parameters.distance_metric}
-							onChange={(e) => onSelectDistance(e.target.value)}
+							onChange={(e) =>
+								update(
+									["qdrant_db", "parameters", "distance_metric"],
+									e.target.value
+								)
+							}
 						>
 							<option value="">
 								{distanceMetrics.length
@@ -279,7 +307,9 @@ export default function ConfigEditor({
 						<select
 							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
 							value={cfg.chunking.chunking_type}
-							onChange={(e) => onSelectChunking(e.target.value)}
+							onChange={(e) =>
+								update(["chunking", "chunking_type"], e.target.value)
+							}
 						>
 							<option value="">
 								{chunkingTypes.length
@@ -324,7 +354,16 @@ export default function ConfigEditor({
 				</div>
 			</SectionCard>
 
-			{/* Evaluation */}
+			{/* NEW: Agents to evaluate */}
+			<AgentsConfigurator
+				agents={cfg.agents}
+				setAgents={setAgents}
+				agentTypes={agentTypes}
+				retrievers={retrievers}
+				llmProviders={llmProviders}
+			/>
+
+			{/* Evaluation (metrics + include list if you want to subset) */}
 			<SectionCard title="Evaluation" icon={<span>📊</span>}>
 				<div className="grid md:grid-cols-3 gap-4">
 					<div className="space-y-2 md:col-span-1">
@@ -381,42 +420,47 @@ export default function ConfigEditor({
 					</div>
 				</div>
 
-				<div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4 mt-4">
-					<div className="text-sm font-medium mb-2">
-						Run Plan (choose agents)
+				{/* Optional: explicit include subset; otherwise save/download will default to all */}
+				{cfg.agents.length > 0 && (
+					<div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4 mt-4">
+						<div className="text-sm font-medium mb-2">
+							Run Plan (choose agents)
+						</div>
+						<div className="grid md:grid-cols-3 gap-2">
+							{cfg.agents.map((a) => {
+								const list = cfg.evaluation.run.include_agents || [];
+								const checked = list.includes(a.id);
+								return (
+									<label
+										key={a.id}
+										className={`flex items-center gap-2 text-sm rounded-lg px-3 py-2 border ${
+											checked
+												? "border-zinc-400 bg-zinc-50 dark:bg-zinc-900"
+												: "border-zinc-200 dark:border-zinc-800"
+										}`}
+									>
+										<input
+											type="checkbox"
+											checked={checked}
+											onChange={() => {
+												const curr = cfg.evaluation.run.include_agents || [];
+												const exists = curr.includes(a.id);
+												const next = exists
+													? curr.filter((x) => x !== a.id)
+													: [...curr, a.id];
+												update(["evaluation", "run", "include_agents"], next);
+											}}
+										/>
+										<span className="truncate">{a.id}</span>
+									</label>
+								);
+							})}
+						</div>
+						<div className="text-xs text-zinc-500 mt-2">
+							Leave empty to run all agents.
+						</div>
 					</div>
-					<div className="grid md:grid-cols-3 gap-2">
-						{allAgentIds.map((id) => {
-							const checked = (
-								cfg.evaluation.run.include_agents || []
-							).includes(id);
-							return (
-								<label
-									key={id}
-									className={`flex items-center gap-2 text-sm rounded-lg px-3 py-2 border ${
-										checked
-											? "border-zinc-400 bg-zinc-50 dark:bg-zinc-900"
-											: "border-zinc-200 dark:border-zinc-800"
-									}`}
-								>
-									<input
-										type="checkbox"
-										checked={checked}
-										onChange={() => {
-											const current = cfg.evaluation.run.include_agents || [];
-											const exists = current.includes(id);
-											const next = exists
-												? current.filter((x) => x !== id)
-												: [...current, id];
-											update(["evaluation", "run", "include_agents"], next);
-										}}
-									/>
-									<span className="truncate">{id}</span>
-								</label>
-							);
-						})}
-					</div>
-				</div>
+				)}
 			</SectionCard>
 		</div>
 	);

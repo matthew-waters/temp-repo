@@ -41,9 +41,28 @@ export type EmbeddingModelInfo = {
 
 export type DistanceMetric = string;
 
+/** NEW: catalogs for agent configuration */
+export type AgentTypeInfo = {
+	id: string; // e.g., "rag_orchestrator"
+	name: string; // human label
+};
+
+export type RetrieverSpec = {
+	id: string; // retriever_type value
+	name: string; // label
+	agent_types?: string[]; // if provided, restricts to these agent types
+};
+
+export type LLMProviderSpec = {
+	llm_type: string; // e.g., "openai", "anthropic"
+	name: string; // label
+	models: string[]; // e.g., ["gpt-4o-mini", "gpt-4.1"]
+	regions?: string[]; // optional list if your backend cares
+};
+
 export type ExperimentConfig = {
 	name: string;
-	description?: string; // NEW
+	description?: string;
 	data_ingestion: {
 		ingestion_corpus: {
 			dataset_id?: string;
@@ -53,7 +72,7 @@ export type ExperimentConfig = {
 		test_set: { dataset_id?: string; data_path: string; document_type: string };
 	};
 	chunking: {
-		chunking_type: string; // chosen from backend list
+		chunking_type: string;
 		parameters: { chunk_size: number; chunk_overlap: number };
 	};
 	qdrant_db: {
@@ -61,11 +80,12 @@ export type ExperimentConfig = {
 			embedding: {
 				embedding_type: string;
 				embedding_model: string;
-				embedding_length: number; // “Dimensionality”
+				embedding_length: number; // Dimensionality
 			};
-			distance_metric: string; // MOVED here (not under embedding)
+			distance_metric: string; // at qdrant_db.parameters
 		};
 	};
+	/** Agents you want to evaluate against each other */
 	agents: Agent[];
 	evaluation: {
 		metrics: {
@@ -75,6 +95,10 @@ export type ExperimentConfig = {
 			aggregate: string[];
 		};
 		llm_override: { enabled: boolean } & LLMConfig;
+		/**
+		 * If empty -> run all agents in this config.
+		 * Otherwise, only run the listed agent IDs.
+		 */
 		run: { include_agents: string[] };
 	};
 };
