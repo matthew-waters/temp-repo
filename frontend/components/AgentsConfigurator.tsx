@@ -2,20 +2,20 @@
 import React from "react";
 import SectionCard from "./SectionCard";
 import type { Agent, Option } from "../lib/types";
-import { Plus, Copy, Trash2, SplitSquareHorizontal } from "lucide-react";
+import { Plus, Trash2, SplitSquareHorizontal } from "lucide-react";
 
 type Props = {
 	agents: Agent[];
 	setAgents: (next: Agent[]) => void;
-	agentTypes: Option[];
-	retrieverTypes: Option[];
-	llmInterfaces: Option[];
+	agentTypes: Option[]; // from /catalog.agent_types
+	retrieverTypes: Option[]; // from /catalog.retriever_types
+	llmInterfaces: Option[]; // from /catalog.llm_interfaces
 };
 
-const makeAgent = (n: number): Agent => ({
-	id: `agent-${n}`,
-	name: `Agent ${n}`,
-	agent_type: "",
+const makeAgentForType = (t: Option): Agent => ({
+	id: t.id, // unique because we enforce one-per-type
+	name: t.label, // human-friendly name shown in UI
+	agent_type: t.id,
 	retriever: { retriever_type: "", top_k: 5 },
 	llm: { llm_type: "", model: "", region: "", temperature: 0.0 },
 	overrides: { chunking: null, qdrant_db: null },
@@ -31,15 +31,26 @@ export default function AgentsConfigurator({
 	const [selectedIndex, setSelectedIndex] = React.useState(0);
 	const selected = agents[selectedIndex];
 
-	const add = () => setAgents([...agents, makeAgent(agents.length + 1)]);
-	const duplicate = (i: number) => {
-		const clone: Agent = JSON.parse(JSON.stringify(agents[i]));
-		const n = agents.length + 1;
-		clone.id = `agent-${n}`;
-		clone.name = `${clone.name} Copy`;
-		setAgents([...agents, clone]);
-		setSelectedIndex(agents.length);
+	const usedTypes = new Set(agents.map((a) => a.agent_type).filter(Boolean));
+	const labelFor = (id: string) =>
+		agentTypes.find((o) => o.id === id)?.label || id;
+
+	// Types you can still add (not already used)
+	const unusedAgentTypes = agentTypes.filter((o) => !usedTypes.has(o.id));
+
+	// Types you can select in the editor for THIS agent:
+	// include its current type + any unused ones
+	const selectableFor = (currentType: string) =>
+		agentTypes.filter((o) => o.id === currentType || !usedTypes.has(o.id));
+
+	const add = () => {
+		if (unusedAgentTypes.length === 0) return;
+		const t = unusedAgentTypes[0];
+		const next = [...agents, makeAgentForType(t)];
+		setAgents(next);
+		setSelectedIndex(next.length - 1);
 	};
+
 	const remove = (i: number) => {
 		const next = agents.filter((_, idx) => idx !== i);
 		setAgents(next);
@@ -62,13 +73,24 @@ export default function AgentsConfigurator({
 				<button
 					type="button"
 					onClick={add}
-					className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 px-3 py-2 text-sm shadow hover:opacity-90"
+					disabled={unusedAgentTypes.length === 0}
+					className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm shadow ${
+						unusedAgentTypes.length === 0
+							? "bg-zinc-300 text-zinc-600 cursor-not-allowed dark:bg-zinc-800 dark:text-zinc-500"
+							: "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 hover:opacity-90"
+					}`}
+					title={
+						unusedAgentTypes.length === 0
+							? "All agent types added"
+							: "Add agent"
+					}
 				>
 					<Plus size={14} /> Add agent
 				</button>
 			}
 		>
 			<div className="grid md:grid-cols-[260px_1fr] gap-4">
+				{/* List */}
 				<div className="rounded-xl border border-zinc-200 dark:border-zinc-800 divide-y divide-zinc-200 dark:divide-zinc-800 overflow-hidden">
 					{agents.length === 0 && (
 						<div className="px-3 py-3 text-sm text-zinc-500">
@@ -77,7 +99,7 @@ export default function AgentsConfigurator({
 					)}
 					{agents.map((a, i) => (
 						<div
-							key={a.id}
+							key={a.id || i}
 							role="button"
 							tabIndex={0}
 							onClick={() => setSelectedIndex(i)}
@@ -94,20 +116,10 @@ export default function AgentsConfigurator({
 							}`}
 						>
 							<span className="truncate">
-								{a.name} <span className="text-xs text-zinc-500">({a.id})</span>
+								{labelFor(a.agent_type)}{" "}
+								<span className="text-xs text-zinc-500">({a.agent_type})</span>
 							</span>
 							<span className="flex items-center gap-2">
-								<button
-									type="button"
-									onClick={(e) => {
-										e.stopPropagation();
-										duplicate(i);
-									}}
-									className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700"
-									title="Duplicate"
-								>
-									<Copy size={14} />
-								</button>
 								<button
 									type="button"
 									onClick={(e) => {
@@ -127,51 +139,35 @@ export default function AgentsConfigurator({
 				{/* Editor */}
 				{selected && (
 					<div className="space-y-6">
-						<div className="grid md:grid-cols-2 gap-4">
-							<div className="space-y-2">
-								<label className="text-sm font-medium">Agent ID</label>
-								<input
-									className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-									value={selected.id}
-									onChange={(e) =>
-										update(selectedIndex, ["id"], e.target.value)
-									}
-								/>
-							</div>
-							<div className="space-y-2">
-								<label className="text-sm font-medium">Name</label>
-								<input
-									className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-									value={selected.name}
-									onChange={(e) =>
-										update(selectedIndex, ["name"], e.target.value)
-									}
-								/>
-							</div>
-						</div>
-
+						{/* Agent Type (only editable field for identity) */}
 						<div className="space-y-2">
 							<label className="text-sm font-medium">Agent Type</label>
 							<select
 								className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
 								value={selected.agent_type}
-								onChange={(e) =>
-									update(selectedIndex, ["agent_type"], e.target.value)
-								}
+								onChange={(e) => {
+									const newType = e.target.value;
+									// auto-sync id + name with the chosen type
+									update(selectedIndex, ["agent_type"], newType);
+									update(selectedIndex, ["id"], newType);
+									update(selectedIndex, ["name"], labelFor(newType));
+									// (Optional) reset retriever if you want to enforce compatibility later
+									// update(selectedIndex, ["retriever", "retriever_type"], "");
+								}}
 							>
-								<option value="">
-									{agentTypes.length
-										? "Select agent type…"
-										: "No agent types available"}
-								</option>
-								{agentTypes.map((t) => (
+								{selectableFor(selected.agent_type).map((t) => (
 									<option key={t.id} value={t.id}>
 										{t.label}
 									</option>
 								))}
 							</select>
+							<p className="text-xs text-zinc-500">
+								Each agent type can be selected only once. ID and Name are
+								derived from the type.
+							</p>
 						</div>
 
+						{/* Retriever */}
 						<div className="grid md:grid-cols-2 gap-4">
 							<div className="space-y-2">
 								<label className="text-sm font-medium">Retriever Type</label>
@@ -215,15 +211,19 @@ export default function AgentsConfigurator({
 							</div>
 						</div>
 
+						{/* LLM */}
 						<div className="grid md:grid-cols-4 gap-4">
 							<div className="space-y-2 md:col-span-1">
 								<label className="text-sm font-medium">LLM Interface</label>
 								<select
 									className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
 									value={selected.llm.llm_type}
-									onChange={(e) =>
-										update(selectedIndex, ["llm", "llm_type"], e.target.value)
-									}
+									onChange={(e) => {
+										update(selectedIndex, ["llm", "llm_type"], e.target.value);
+										// Reset model/region when provider changes if you prefer
+										// update(selectedIndex, ["llm","model"], "");
+										// update(selectedIndex, ["llm","region"], "");
+									}}
 								>
 									<option value="">
 										{llmInterfaces.length
@@ -238,7 +238,6 @@ export default function AgentsConfigurator({
 								</select>
 							</div>
 
-							{/* Model/Region left free-text since registry doesn't provide per-interface models */}
 							<div className="space-y-2 md:col-span-2">
 								<label className="text-sm font-medium">Model</label>
 								<input
@@ -285,6 +284,14 @@ export default function AgentsConfigurator({
 					</div>
 				)}
 			</div>
+
+			{/* Helper note if all used */}
+			{unusedAgentTypes.length === 0 && agentTypes.length > 0 && (
+				<div className="mt-3 text-xs text-zinc-500">
+					All agent types have been added. Remove one to choose a different
+					type.
+				</div>
+			)}
 		</SectionCard>
 	);
 }
