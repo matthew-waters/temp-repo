@@ -1,4 +1,5 @@
 "use client";
+
 import React from "react";
 import SectionCard from "./SectionCard";
 import type { SavedConfig } from "../lib/types";
@@ -11,6 +12,12 @@ type Props = {
 export default function ConfigDetail({ item, onBack }: Props) {
 	const { config } = item;
 	const metrics = config.evaluation.metrics;
+
+	// Single source of truth for dataset: dataset_id set on both ingestion + test.
+	const datasetId =
+		config.data_ingestion.ingestion_corpus.dataset_id ||
+		config.data_ingestion.test_set.dataset_id ||
+		"";
 
 	return (
 		<div className="space-y-6">
@@ -51,24 +58,13 @@ export default function ConfigDetail({ item, onBack }: Props) {
 				</div>
 			</SectionCard>
 
-			<SectionCard title="Datasets" icon={<span>🗃️</span>}>
-				<div className="grid md:grid-cols-2 gap-4">
-					{(["ingestion_corpus", "test_set"] as const).map((k) => (
-						<div
-							key={k}
-							className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4"
-						>
-							<div className="text-xs text-zinc-500">
-								{k === "ingestion_corpus" ? "Ingestion Corpus" : "Test Set"}
-							</div>
-							<div className="text-sm mt-1 break-all">
-								{config.data_ingestion[k].data_path || "—"}{" "}
-								{config.data_ingestion[k].document_type
-									? `(${config.data_ingestion[k].document_type})`
-									: ""}
-							</div>
-						</div>
-					))}
+			<SectionCard title="Dataset" icon={<span>🗃️</span>}>
+				<div className="text-sm">
+					<div className="text-xs text-zinc-500">Selected dataset</div>
+					<div className="font-medium mt-1">{datasetId || "—"}</div>
+					<div className="text-xs text-zinc-500 mt-2">
+						Paths are resolved on the backend during run time.
+					</div>
 				</div>
 			</SectionCard>
 
@@ -85,11 +81,11 @@ export default function ConfigDetail({ item, onBack }: Props) {
 					<div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4">
 						<div className="text-xs text-zinc-500">Embedding</div>
 						<div className="text-sm mt-1">
-							{config.qdrant_db.parameters.embedding.embedding_type || "—"}{" "}
-							{config.qdrant_db.parameters.embedding.embedding_model
-								? `(${config.qdrant_db.parameters.embedding.embedding_model})`
-								: ""}
-							, dim {config.qdrant_db.parameters.embedding.embedding_length} •{" "}
+							model id:{" "}
+							{config.qdrant_db.parameters.embedding.embedding_model || "—"}
+							{", dim "}
+							{config.qdrant_db.parameters.embedding.embedding_length || "—"}
+							{" • "}
 							{config.qdrant_db.parameters.distance_metric || "—"}
 						</div>
 					</div>
@@ -98,14 +94,16 @@ export default function ConfigDetail({ item, onBack }: Props) {
 
 			<SectionCard title="Evaluation Metrics" icon={<span>📊</span>}>
 				<div className="grid md:grid-cols-4 gap-4">
-					{[
-						["Agent", metrics.agent],
-						["Retrieval", metrics.retrieval],
-						["Generation", metrics.generation],
-						["Aggregate", metrics.aggregate],
-					].map(([label, arr]) => (
+					{(
+						[
+							["Agent", metrics.agent],
+							["Retrieval", metrics.retrieval],
+							["Generation", metrics.generation],
+							["Aggregate", metrics.aggregate],
+						] as const
+					).map(([label, arr]) => (
 						<div
-							key={label as string}
+							key={label}
 							className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4"
 						>
 							<div className="text-xs text-zinc-500">{label}</div>

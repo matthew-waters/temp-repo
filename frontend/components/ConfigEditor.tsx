@@ -1,9 +1,9 @@
 "use client";
+
 import React, { useState } from "react";
 import SectionCard from "./SectionCard";
 import type {
 	Agent,
-	DatasetInfo,
 	ExperimentConfig,
 	SavedConfig,
 	Option,
@@ -14,21 +14,24 @@ import { FileJson, Save } from "lucide-react";
 import AgentsConfigurator from "./AgentsConfigurator";
 
 type Props = {
-	datasets: DatasetInfo[];
-	// Catalog options from /catalog
+	/** NEW: dataset ids / labels only */
+	datasetOptions: Option[];
+
+	/** Catalog options from /catalog */
 	agentTypes: Option[];
 	retrieverTypes: Option[];
 	llmInterfaces: Option[];
 	chunkingStrategies: Option[];
 	embeddingModels: Option[];
 	evaluationMetrics: Option[];
+
 	onCancel: () => void;
 	onSave: (saved: SavedConfig) => void;
 	saveConfig: (cfg: ExperimentConfig) => SavedConfig;
 };
 
 export default function ConfigEditor({
-	datasets,
+	datasetOptions,
 	agentTypes,
 	retrieverTypes,
 	llmInterfaces,
@@ -60,22 +63,21 @@ export default function ConfigEditor({
 			.map((x) => x.trim())
 			.filter(Boolean);
 
-	const onSelectDataset = (
-		key: "ingestion_corpus" | "test_set",
-		id: string
-	) => {
-		const ds = datasets.find((d) => d.id === id);
-		if (!ds) return;
-		update(["data_ingestion", key, "dataset_id"], id);
-		update(["data_ingestion", key, "data_path"], ds.data_path);
-		update(["data_ingestion", key, "document_type"], ds.document_type);
+	/** When a dataset is selected, set the same id for BOTH corpus and test. */
+	const onSelectDatasetId = (id: string) => {
+		update(["data_ingestion", "ingestion_corpus", "dataset_id"], id);
+		update(["data_ingestion", "test_set", "dataset_id"], id);
+		// Clear any legacy/stale file-path fields; backend resolves these later.
+		update(["data_ingestion", "ingestion_corpus", "data_path"], "");
+		update(["data_ingestion", "test_set", "data_path"], "");
+		update(["data_ingestion", "ingestion_corpus", "document_type"], "");
+		update(["data_ingestion", "test_set", "document_type"], "");
 	};
 
+	/** Embedding registry returns ids/labels; we store just the id. */
 	const onSelectEmbeddingModel = (id: string) => {
-		// Registry only gives id + label. We'll store id as embedding_model; leave type/length for backend to resolve.
 		update(["qdrant_db", "parameters", "embedding", "embedding_model"], id);
-		// Optional heuristics if you want:
-		// update(["qdrant_db","parameters","embedding","embedding_type"], id.split(":")[0] ?? "");
+		// (Optional) if you later return type/length from backend, set them here.
 	};
 
 	const downloadYAML = () => {
@@ -178,38 +180,30 @@ export default function ConfigEditor({
 				</div>
 			</SectionCard>
 
-			{/* Datasets */}
-			<SectionCard title="Datasets" icon={<span>🗃️</span>}>
-				<div className="grid md:grid-cols-2 gap-4">
-					{(["ingestion_corpus", "test_set"] as const).map((k) => (
-						<div key={k} className="space-y-2">
-							<label className="text-sm font-medium">
-								{k === "ingestion_corpus" ? "Ingestion Corpus" : "Test Set"}
-							</label>
-							<select
-								className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-								value={cfg.data_ingestion[k].dataset_id ?? ""}
-								onChange={(e) => onSelectDataset(k, e.target.value)}
-							>
-								<option value="" disabled>
-									{datasets.length
-										? "Select dataset…"
-										: "No datasets available"}
-								</option>
-								{datasets.map((d) => (
-									<option key={d.id} value={d.id}>
-										{d.name}
-									</option>
-								))}
-							</select>
-							<div className="text-xs text-zinc-500">
-								{cfg.data_ingestion[k].data_path || "—"}
-								{cfg.data_ingestion[k].document_type
-									? ` (${cfg.data_ingestion[k].document_type})`
-									: ""}
-							</div>
-						</div>
-					))}
+			{/* Dataset (single selector) */}
+			<SectionCard title="Dataset" icon={<span>🗃️</span>}>
+				<div className="space-y-2 md:w-[420px]">
+					<label className="text-sm font-medium">Select dataset</label>
+					<select
+						className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
+						value={cfg.data_ingestion.ingestion_corpus.dataset_id ?? ""}
+						onChange={(e) => onSelectDatasetId(e.target.value)}
+					>
+						<option value="" disabled>
+							{datasetOptions.length
+								? "Choose dataset…"
+								: "No datasets available"}
+						</option>
+						{datasetOptions.map((opt) => (
+							<option key={opt.id} value={opt.id}>
+								{opt.label}
+							</option>
+						))}
+					</select>
+					<p className="text-xs text-zinc-500">
+						Only the <code>dataset_id</code> is stored. Paths are resolved on
+						the backend.
+					</p>
 				</div>
 			</SectionCard>
 
@@ -235,7 +229,7 @@ export default function ConfigEditor({
 							))}
 						</select>
 						<div className="text-xs text-zinc-500">
-							Stored as model id. (Type/length resolved backend-side)
+							Stored as model id; backend can resolve type/length if needed.
 						</div>
 					</div>
 
@@ -350,13 +344,16 @@ export default function ConfigEditor({
 									value={cfg.evaluation.metrics[field].join(", ")}
 									onChange={(e) =>
 										update(
-											["evaluation", "metrics", field],
+											[
+												"evaluation",
+												"metrics",
+												"agent" === field ? "agent" : field,
+											],
 											parseCSV(e.target.value)
 										)
 									}
 									placeholder="Comma-separated"
 								/>
-								{/* Suggestions from registry */}
 								{evaluationMetrics.length > 0 && (
 									<div className="flex flex-wrap gap-2">
 										{evaluationMetrics.slice(0, 12).map((m) => (
@@ -377,7 +374,6 @@ export default function ConfigEditor({
 					)}
 				</div>
 
-				{/* Optional subset by ID */}
 				{cfg.agents.length > 0 && (
 					<div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4 mt-4">
 						<div className="text-sm font-medium mb-2">

@@ -12,9 +12,9 @@ import type {
 	SavedConfig,
 	ExperimentConfig,
 	Catalog,
-	DatasetInfo,
+	Option,
 } from "../lib/types";
-import { fetchCatalog, fetchDatasets } from "../lib/api";
+import { fetchCatalog, fetchDatasetOptions } from "../lib/api";
 import { listConfigs, saveNew, deleteConfig, getConfig } from "../lib/storage";
 
 type ViewState =
@@ -25,9 +25,9 @@ type ViewState =
 export default function Page() {
 	const [active, setActive] = useState<"configs" | "results">("configs");
 
-	// registry + datasets
+	// registry + datasets (ids only)
 	const [catalog, setCatalog] = useState<Catalog | null>(null);
-	const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
+	const [datasetOptions, setDatasetOptions] = useState<Option[]>([]);
 
 	// saved configs
 	const [saved, setSaved] = useState<SavedConfig[]>(listConfigs());
@@ -37,12 +37,15 @@ export default function Page() {
 		let mounted = true;
 		(async () => {
 			try {
-				const [cat, ds] = await Promise.all([fetchCatalog(), fetchDatasets()]);
+				const [cat, ds] = await Promise.all([
+					fetchCatalog(),
+					fetchDatasetOptions(),
+				]);
 				if (!mounted) return;
 				setCatalog(cat);
-				setDatasets(ds);
+				setDatasetOptions(ds);
 			} catch {
-				// leave null/empty if backend not ready
+				// ok if backend not ready
 			}
 		})();
 		return () => {
@@ -112,7 +115,7 @@ export default function Page() {
 
 								{view.mode === "create" && catalog && (
 									<ConfigEditor
-										datasets={datasets}
+										datasetOptions={datasetOptions}
 										agentTypes={catalog.agent_types}
 										retrieverTypes={catalog.retriever_types}
 										llmInterfaces={catalog.llm_interfaces}
@@ -129,8 +132,8 @@ export default function Page() {
 
 								{view.mode === "create" && !catalog && (
 									<div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 text-sm">
-										Catalog not loaded yet. Ensure your backend is running and
-										`NEXT_PUBLIC_API_URL` is set.
+										Catalog not loaded yet. Ensure your backend is running and{" "}
+										<code>NEXT_PUBLIC_API_URL</code> is set.
 									</div>
 								)}
 							</motion.div>
