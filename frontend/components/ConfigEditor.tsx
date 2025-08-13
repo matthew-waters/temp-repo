@@ -1,17 +1,12 @@
 "use client";
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import SectionCard from "./SectionCard";
 import type {
 	Agent,
 	DatasetInfo,
 	ExperimentConfig,
 	SavedConfig,
-	ChunkingType,
-	EmbeddingModelInfo,
-	DistanceMetric,
-	AgentTypeInfo,
-	RetrieverSpec,
-	LLMProviderSpec,
+	Option,
 } from "../lib/types";
 import { emptyConfig } from "../lib/defaults";
 import yaml from "js-yaml";
@@ -20,12 +15,13 @@ import AgentsConfigurator from "./AgentsConfigurator";
 
 type Props = {
 	datasets: DatasetInfo[];
-	chunkingTypes: ChunkingType[];
-	embeddingModels: EmbeddingModelInfo[];
-	distanceMetrics: DistanceMetric[];
-	agentTypes: AgentTypeInfo[];
-	retrievers: RetrieverSpec[];
-	llmProviders: LLMProviderSpec[];
+	// Catalog options from /catalog
+	agentTypes: Option[];
+	retrieverTypes: Option[];
+	llmInterfaces: Option[];
+	chunkingStrategies: Option[];
+	embeddingModels: Option[];
+	evaluationMetrics: Option[];
 	onCancel: () => void;
 	onSave: (saved: SavedConfig) => void;
 	saveConfig: (cfg: ExperimentConfig) => SavedConfig;
@@ -33,21 +29,20 @@ type Props = {
 
 export default function ConfigEditor({
 	datasets,
-	chunkingTypes,
-	embeddingModels,
-	distanceMetrics,
 	agentTypes,
-	retrievers,
-	llmProviders,
+	retrieverTypes,
+	llmInterfaces,
+	chunkingStrategies,
+	embeddingModels,
+	evaluationMetrics,
 	onCancel,
 	onSave,
 	saveConfig,
 }: Props) {
 	const [cfg, setCfg] = useState<ExperimentConfig>(() => emptyConfig());
 
-	const setAgents = (next: Agent[]) => {
+	const setAgents = (next: Agent[]) =>
 		setCfg((prev) => ({ ...prev, agents: next }));
-	};
 
 	const update = (path: (string | number)[], value: any) => {
 		setCfg((prev) => {
@@ -77,24 +72,13 @@ export default function ConfigEditor({
 	};
 
 	const onSelectEmbeddingModel = (id: string) => {
-		const m = embeddingModels.find((x) => x.id === id);
-		if (!m) return;
-		update(
-			["qdrant_db", "parameters", "embedding", "embedding_type"],
-			m.embedding_type
-		);
-		update(
-			["qdrant_db", "parameters", "embedding", "embedding_model"],
-			m.model
-		);
-		update(
-			["qdrant_db", "parameters", "embedding", "embedding_length"],
-			m.embedding_length
-		);
+		// Registry only gives id + label. We'll store id as embedding_model; leave type/length for backend to resolve.
+		update(["qdrant_db", "parameters", "embedding", "embedding_model"], id);
+		// Optional heuristics if you want:
+		// update(["qdrant_db","parameters","embedding","embedding_type"], id.split(":")[0] ?? "");
 	};
 
 	const downloadYAML = () => {
-		// Default include_agents to all configured agent IDs if unset/empty
 		const include = cfg.evaluation.run.include_agents?.length
 			? cfg.evaluation.run.include_agents
 			: cfg.agents.map((a) => a.id);
@@ -114,6 +98,14 @@ export default function ConfigEditor({
 		URL.revokeObjectURL(url);
 	};
 
+	const addMetric = (
+		field: "agent" | "retrieval" | "generation" | "aggregate",
+		id: string
+	) => {
+		const arr = new Set([...(cfg.evaluation.metrics[field] ?? []), id]);
+		update(["evaluation", "metrics", field], Array.from(arr));
+	};
+
 	return (
 		<div className="space-y-6">
 			{/* Header */}
@@ -130,7 +122,6 @@ export default function ConfigEditor({
 					<button
 						type="button"
 						onClick={() => {
-							// Same default for include_agents on save
 							const include = cfg.evaluation.run.include_agents?.length
 								? cfg.evaluation.run.include_agents
 								: cfg.agents.map((a) => a.id);
@@ -181,7 +172,7 @@ export default function ConfigEditor({
 							rows={3}
 							value={cfg.description ?? ""}
 							onChange={(e) => update(["description"], e.target.value)}
-							placeholder="What are you testing or comparing in this experiment?"
+							placeholder="What are you testing or comparing?"
 						/>
 					</div>
 				</div>
@@ -229,15 +220,7 @@ export default function ConfigEditor({
 						<label className="text-sm font-medium">Embedding Model</label>
 						<select
 							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-							value={
-								embeddingModels.find(
-									(m) =>
-										m.embedding_type ===
-											cfg.qdrant_db.parameters.embedding.embedding_type &&
-										m.model ===
-											cfg.qdrant_db.parameters.embedding.embedding_model
-								)?.id ?? ""
-							}
+							value={cfg.qdrant_db.parameters.embedding.embedding_model || ""}
 							onChange={(e) => onSelectEmbeddingModel(e.target.value)}
 						>
 							<option value="">
@@ -247,13 +230,12 @@ export default function ConfigEditor({
 							</option>
 							{embeddingModels.map((m) => (
 								<option key={m.id} value={m.id}>
-									{m.name}
+									{m.label}
 								</option>
 							))}
 						</select>
 						<div className="text-xs text-zinc-500">
-							Type: {cfg.qdrant_db.parameters.embedding.embedding_type || "—"} •
-							Model: {cfg.qdrant_db.parameters.embedding.embedding_model || "—"}
+							Stored as model id. (Type/length resolved backend-side)
 						</div>
 					</div>
 
@@ -269,12 +251,13 @@ export default function ConfigEditor({
 									Number(e.target.value)
 								)
 							}
+							placeholder="optional"
 						/>
 					</div>
 
 					<div className="space-y-2 md:col-span-1">
 						<label className="text-sm font-medium">Distance Metric</label>
-						<select
+						<input
 							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
 							value={cfg.qdrant_db.parameters.distance_metric}
 							onChange={(e) =>
@@ -283,18 +266,8 @@ export default function ConfigEditor({
 									e.target.value
 								)
 							}
-						>
-							<option value="">
-								{distanceMetrics.length
-									? "Select distance…"
-									: "No metrics available"}
-							</option>
-							{distanceMetrics.map((dm) => (
-								<option key={dm} value={dm}>
-									{dm}
-								</option>
-							))}
-						</select>
+							placeholder="e.g., cosine / dot / euclidean"
+						/>
 					</div>
 				</div>
 			</SectionCard>
@@ -312,13 +285,13 @@ export default function ConfigEditor({
 							}
 						>
 							<option value="">
-								{chunkingTypes.length
+								{chunkingStrategies.length
 									? "Select chunker…"
 									: "No chunkers available"}
 							</option>
-							{chunkingTypes.map((ct) => (
-								<option key={ct} value={ct}>
-									{ct}
+							{chunkingStrategies.map((ct) => (
+								<option key={ct.id} value={ct.id}>
+									{ct.label}
 								</option>
 							))}
 						</select>
@@ -354,73 +327,57 @@ export default function ConfigEditor({
 				</div>
 			</SectionCard>
 
-			{/* NEW: Agents to evaluate */}
+			{/* Agents */}
 			<AgentsConfigurator
 				agents={cfg.agents}
 				setAgents={setAgents}
 				agentTypes={agentTypes}
-				retrievers={retrievers}
-				llmProviders={llmProviders}
+				retrieverTypes={retrieverTypes}
+				llmInterfaces={llmInterfaces}
 			/>
 
-			{/* Evaluation (metrics + include list if you want to subset) */}
+			{/* Evaluation */}
 			<SectionCard title="Evaluation" icon={<span>📊</span>}>
 				<div className="grid md:grid-cols-3 gap-4">
-					<div className="space-y-2 md:col-span-1">
-						<label className="text-sm font-medium">Retrieval Metrics</label>
-						<input
-							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-							value={cfg.evaluation.metrics.retrieval.join(", ")}
-							onChange={(e) =>
-								update(
-									["evaluation", "metrics", "retrieval"],
-									parseCSV(e.target.value)
-								)
-							}
-						/>
-					</div>
-					<div className="space-y-2 md:col-span-1">
-						<label className="text-sm font-medium">Generation Metrics</label>
-						<input
-							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-							value={cfg.evaluation.metrics.generation.join(", ")}
-							onChange={(e) =>
-								update(
-									["evaluation", "metrics", "generation"],
-									parseCSV(e.target.value)
-								)
-							}
-						/>
-					</div>
-					<div className="space-y-2 md:col-span-1">
-						<label className="text-sm font-medium">Aggregate Metrics</label>
-						<input
-							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-							value={cfg.evaluation.metrics.aggregate.join(", ")}
-							onChange={(e) =>
-								update(
-									["evaluation", "metrics", "aggregate"],
-									parseCSV(e.target.value)
-								)
-							}
-						/>
-					</div>
-					<div className="space-y-2 md:col-span-3">
-						<label className="text-sm font-medium">Agent Metrics</label>
-						<input
-							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-							value={cfg.evaluation.metrics.agent.join(", ")}
-							onChange={(e) =>
-								update(
-									["evaluation", "metrics", "agent"],
-									parseCSV(e.target.value)
-								)
-							}
-						/>
-					</div>
+					{(["retrieval", "generation", "aggregate", "agent"] as const).map(
+						(field) => (
+							<div key={field} className="space-y-2">
+								<label className="text-sm font-medium">
+									{field[0].toUpperCase() + field.slice(1)} Metrics
+								</label>
+								<input
+									className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
+									value={cfg.evaluation.metrics[field].join(", ")}
+									onChange={(e) =>
+										update(
+											["evaluation", "metrics", field],
+											parseCSV(e.target.value)
+										)
+									}
+									placeholder="Comma-separated"
+								/>
+								{/* Suggestions from registry */}
+								{evaluationMetrics.length > 0 && (
+									<div className="flex flex-wrap gap-2">
+										{evaluationMetrics.slice(0, 12).map((m) => (
+											<button
+												key={`${field}-${m.id}`}
+												type="button"
+												onClick={() => addMetric(field, m.id)}
+												className="text-xs rounded-lg border border-zinc-200 dark:border-zinc-800 px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+												title={m.label}
+											>
+												+ {m.id}
+											</button>
+										))}
+									</div>
+								)}
+							</div>
+						)
+					)}
 				</div>
 
-				{/* Optional: explicit include subset; otherwise save/download will default to all */}
+				{/* Optional subset by ID */}
 				{cfg.agents.length > 0 && (
 					<div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4 mt-4">
 						<div className="text-sm font-medium mb-2">

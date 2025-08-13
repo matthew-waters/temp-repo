@@ -7,28 +7,14 @@ import ConfigList from "../components/ConfigList";
 import ConfigDetail from "../components/ConfigDetail";
 import ConfigEditor from "../components/ConfigEditor";
 import ResultsView from "../components/ResultsView";
+
 import type {
 	SavedConfig,
 	ExperimentConfig,
-	// NEW types we fetch:
-	ChunkingType,
-	EmbeddingModelInfo,
-	DistanceMetric,
-	AgentTypeInfo,
-	RetrieverSpec,
-	LLMProviderSpec,
+	Catalog,
 	DatasetInfo,
 } from "../lib/types";
-import {
-	fetchDatasets,
-	fetchChunkingTypes,
-	fetchEmbeddingModels,
-	fetchDistanceMetrics,
-	// NEW
-	fetchAgentTypes,
-	fetchRetrieverSpecs,
-	fetchLLMProviders,
-} from "../lib/api";
+import { fetchCatalog, fetchDatasets } from "../lib/api";
 import { listConfigs, saveNew, deleteConfig, getConfig } from "../lib/storage";
 
 type ViewState =
@@ -39,16 +25,9 @@ type ViewState =
 export default function Page() {
 	const [active, setActive] = useState<"configs" | "results">("configs");
 
-	// catalogs
+	// registry + datasets
+	const [catalog, setCatalog] = useState<Catalog | null>(null);
 	const [datasets, setDatasets] = useState<DatasetInfo[]>([]);
-	const [chunkingTypes, setChunkingTypes] = useState<ChunkingType[]>([]);
-	const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModelInfo[]>(
-		[]
-	);
-	const [distanceMetrics, setDistanceMetrics] = useState<DistanceMetric[]>([]);
-	const [agentTypes, setAgentTypes] = useState<AgentTypeInfo[]>([]);
-	const [retrievers, setRetrievers] = useState<RetrieverSpec[]>([]);
-	const [llmProviders, setLlmProviders] = useState<LLMProviderSpec[]>([]);
 
 	// saved configs
 	const [saved, setSaved] = useState<SavedConfig[]>(listConfigs());
@@ -58,25 +37,12 @@ export default function Page() {
 		let mounted = true;
 		(async () => {
 			try {
-				const [d, ct, em, dm, at, r, lp] = await Promise.all([
-					fetchDatasets(),
-					fetchChunkingTypes(),
-					fetchEmbeddingModels(),
-					fetchDistanceMetrics(),
-					fetchAgentTypes(),
-					fetchRetrieverSpecs(),
-					fetchLLMProviders(),
-				]);
+				const [cat, ds] = await Promise.all([fetchCatalog(), fetchDatasets()]);
 				if (!mounted) return;
-				setDatasets(d);
-				setChunkingTypes(ct);
-				setEmbeddingModels(em);
-				setDistanceMetrics(dm);
-				setAgentTypes(at);
-				setRetrievers(r);
-				setLlmProviders(lp);
+				setCatalog(cat);
+				setDatasets(ds);
 			} catch {
-				// leave empty on failure
+				// leave null/empty if backend not ready
 			}
 		})();
 		return () => {
@@ -91,7 +57,6 @@ export default function Page() {
 	};
 
 	const saveConfig = (cfg: ExperimentConfig): SavedConfig => {
-		// cfg.agents already configured via editor; just persist
 		const savedItem = saveNew({ name: cfg.name || "Untitled", config: cfg });
 		setSaved(listConfigs());
 		return savedItem;
@@ -145,21 +110,28 @@ export default function Page() {
 									<ConfigDetail item={currentDetail} onBack={backToList} />
 								)}
 
-								{view.mode === "create" && (
+								{view.mode === "create" && catalog && (
 									<ConfigEditor
 										datasets={datasets}
-										chunkingTypes={chunkingTypes}
-										embeddingModels={embeddingModels}
-										distanceMetrics={distanceMetrics}
-										agentTypes={agentTypes}
-										retrievers={retrievers}
-										llmProviders={llmProviders}
+										agentTypes={catalog.agent_types}
+										retrieverTypes={catalog.retriever_types}
+										llmInterfaces={catalog.llm_interfaces}
+										chunkingStrategies={catalog.chunking_strategies}
+										embeddingModels={catalog.embedding_models}
+										evaluationMetrics={catalog.evaluation_metrics}
 										onCancel={backToList}
 										onSave={(savedItem) =>
 											setView({ mode: "detail", id: savedItem.id })
 										}
 										saveConfig={saveConfig}
 									/>
+								)}
+
+								{view.mode === "create" && !catalog && (
+									<div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-6 text-sm">
+										Catalog not loaded yet. Ensure your backend is running and
+										`NEXT_PUBLIC_API_URL` is set.
+									</div>
 								)}
 							</motion.div>
 						) : (
