@@ -1,3 +1,4 @@
+// src/components/ConfigEditor.tsx
 "use client";
 
 import React, { useState } from "react";
@@ -14,16 +15,15 @@ import { FileJson, Save } from "lucide-react";
 import AgentsConfigurator from "./AgentsConfigurator";
 
 type Props = {
-	/** NEW: dataset ids / labels only */
 	datasetOptions: Option[];
 
-	/** Catalog options from /catalog */
 	agentTypes: Option[];
 	retrieverTypes: Option[];
 	llmInterfaces: Option[];
 	chunkingStrategies: Option[];
 	embeddingModels: Option[];
 	evaluationMetrics: Option[];
+	llmModels: Option[]; // provider model-id as id, friendly label as label
 
 	onCancel: () => void;
 	onSave: (saved: SavedConfig) => void;
@@ -38,6 +38,7 @@ export default function ConfigEditor({
 	chunkingStrategies,
 	embeddingModels,
 	evaluationMetrics,
+	llmModels,
 	onCancel,
 	onSave,
 	saveConfig,
@@ -63,33 +64,22 @@ export default function ConfigEditor({
 			.map((x) => x.trim())
 			.filter(Boolean);
 
-	/** When a dataset is selected, set the same id for BOTH corpus and test. */
 	const onSelectDatasetId = (id: string) => {
 		update(["data_ingestion", "ingestion_corpus", "dataset_id"], id);
 		update(["data_ingestion", "test_set", "dataset_id"], id);
-		// Clear any legacy/stale file-path fields; backend resolves these later.
 		update(["data_ingestion", "ingestion_corpus", "data_path"], "");
 		update(["data_ingestion", "test_set", "data_path"], "");
 		update(["data_ingestion", "ingestion_corpus", "document_type"], "");
 		update(["data_ingestion", "test_set", "document_type"], "");
 	};
 
-	/** Embedding registry returns ids/labels; we store just the id. */
 	const onSelectEmbeddingModel = (id: string) => {
 		update(["qdrant_db", "parameters", "embedding", "embedding_model"], id);
-		// (Optional) if you later return type/length from backend, set them here.
 	};
 
 	const downloadYAML = () => {
-		const include = cfg.evaluation.run.include_agents?.length
-			? cfg.evaluation.run.include_agents
-			: cfg.agents.map((a) => a.id);
-		const out = {
-			experiment: {
-				...cfg,
-				evaluation: { ...cfg.evaluation, run: { include_agents: include } },
-			},
-		};
+		// No run plan, just dump the config as-is
+		const out = { experiment: { ...cfg } };
 		const y = yaml.dump(out, { noRefs: true, lineWidth: 120 });
 		const blob = new Blob([y], { type: "text/yaml" });
 		const url = URL.createObjectURL(blob);
@@ -98,14 +88,6 @@ export default function ConfigEditor({
 		a.download = `${cfg.name || "experiment"}.yaml`;
 		a.click();
 		URL.revokeObjectURL(url);
-	};
-
-	const addMetric = (
-		field: "agent" | "retrieval" | "generation" | "aggregate",
-		id: string
-	) => {
-		const arr = new Set([...(cfg.evaluation.metrics[field] ?? []), id]);
-		update(["evaluation", "metrics", field], Array.from(arr));
 	};
 
 	return (
@@ -124,16 +106,7 @@ export default function ConfigEditor({
 					<button
 						type="button"
 						onClick={() => {
-							const include = cfg.evaluation.run.include_agents?.length
-								? cfg.evaluation.run.include_agents
-								: cfg.agents.map((a) => a.id);
-							const saved = saveConfig({
-								...cfg,
-								evaluation: {
-									...cfg.evaluation,
-									run: { include_agents: include },
-								},
-							});
+							const saved = saveConfig({ ...cfg });
 							onSave(saved);
 						}}
 						className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 px-3 py-2 text-sm shadow hover:opacity-90"
@@ -328,9 +301,10 @@ export default function ConfigEditor({
 				agentTypes={agentTypes}
 				retrieverTypes={retrieverTypes}
 				llmInterfaces={llmInterfaces}
+				llmModels={llmModels}
 			/>
 
-			{/* Evaluation */}
+			{/* Evaluation metrics + LLM override */}
 			<SectionCard title="Evaluation" icon={<span>📊</span>}>
 				<div className="grid md:grid-cols-3 gap-4">
 					{(["retrieval", "generation", "aggregate", "agent"] as const).map(
@@ -344,76 +318,75 @@ export default function ConfigEditor({
 									value={cfg.evaluation.metrics[field].join(", ")}
 									onChange={(e) =>
 										update(
-											[
-												"evaluation",
-												"metrics",
-												"agent" === field ? "agent" : field,
-											],
+											["evaluation", "metrics", field],
 											parseCSV(e.target.value)
 										)
 									}
 									placeholder="Comma-separated"
 								/>
-								{evaluationMetrics.length > 0 && (
-									<div className="flex flex-wrap gap-2">
-										{evaluationMetrics.slice(0, 12).map((m) => (
-											<button
-												key={`${field}-${m.id}`}
-												type="button"
-												onClick={() => addMetric(field, m.id)}
-												className="text-xs rounded-lg border border-zinc-200 dark:border-zinc-800 px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-												title={m.label}
-											>
-												+ {m.id}
-											</button>
-										))}
-									</div>
-								)}
 							</div>
 						)
 					)}
 				</div>
 
-				{cfg.agents.length > 0 && (
-					<div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4 mt-4">
-						<div className="text-sm font-medium mb-2">
-							Run Plan (choose agents)
-						</div>
-						<div className="grid md:grid-cols-3 gap-2">
-							{cfg.agents.map((a) => {
-								const list = cfg.evaluation.run.include_agents || [];
-								const checked = list.includes(a.id);
-								return (
-									<label
-										key={a.id}
-										className={`flex items-center gap-2 text-sm rounded-lg px-3 py-2 border ${
-											checked
-												? "border-zinc-400 bg-zinc-50 dark:bg-zinc-900"
-												: "border-zinc-200 dark:border-zinc-800"
-										}`}
-									>
-										<input
-											type="checkbox"
-											checked={checked}
-											onChange={() => {
-												const curr = cfg.evaluation.run.include_agents || [];
-												const exists = curr.includes(a.id);
-												const next = exists
-													? curr.filter((x) => x !== a.id)
-													: [...curr, a.id];
-												update(["evaluation", "run", "include_agents"], next);
-											}}
-										/>
-										<span className="truncate">{a.id}</span>
-									</label>
-								);
-							})}
-						</div>
-						<div className="text-xs text-zinc-500 mt-2">
-							Leave empty to run all agents.
-						</div>
+				<div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4 mt-4">
+					<div className="text-sm font-medium mb-2">
+						Evaluation LLM Override
 					</div>
-				)}
+					<label className="inline-flex items-center gap-2 text-sm">
+						<input
+							type="checkbox"
+							className="h-4 w-4"
+							checked={cfg.evaluation.llm_override.enabled}
+							onChange={(e) =>
+								update(
+									["evaluation", "llm_override", "enabled"],
+									e.target.checked
+								)
+							}
+						/>
+						<span>Enabled</span>
+					</label>
+					<div className="grid md:grid-cols-4 gap-4 mt-3">
+						{(["llm_type", "model", "region", "temperature"] as const).map(
+							(k) => (
+								<div key={k} className="space-y-2">
+									<label className="text-sm font-medium capitalize">{k}</label>
+									{k === "temperature" ? (
+										<input
+											disabled={!cfg.evaluation.llm_override.enabled}
+											type="number"
+											step={0.1}
+											min={0}
+											max={2}
+											className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
+											value={cfg.evaluation.llm_override.temperature}
+											onChange={(e) =>
+												update(
+													["evaluation", "llm_override", "temperature"],
+													Number(e.target.value)
+												)
+											}
+										/>
+									) : (
+										<input
+											disabled={!cfg.evaluation.llm_override.enabled}
+											className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
+											value={(cfg.evaluation.llm_override as any)[k]}
+											onChange={(e) =>
+												update(
+													["evaluation", "llm_override", k],
+													e.target.value
+												)
+											}
+											placeholder={k === "model" ? "provider model id" : ""}
+										/>
+									)}
+								</div>
+							)
+						)}
+					</div>
+				</div>
 			</SectionCard>
 		</div>
 	);

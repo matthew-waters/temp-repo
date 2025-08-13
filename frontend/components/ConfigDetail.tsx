@@ -1,3 +1,4 @@
+// src/components/ConfigDetail.tsx
 "use client";
 
 import React from "react";
@@ -13,7 +14,6 @@ export default function ConfigDetail({ item, onBack }: Props) {
 	const { config } = item;
 	const metrics = config.evaluation.metrics;
 
-	// Single source of truth for dataset: dataset_id set on both ingestion + test.
 	const datasetId =
 		config.data_ingestion.ingestion_corpus.dataset_id ||
 		config.data_ingestion.test_set.dataset_id ||
@@ -41,12 +41,9 @@ export default function ConfigDetail({ item, onBack }: Props) {
 						<div className="font-medium">{config.name || "—"}</div>
 					</div>
 					<div>
-						<div className="text-xs text-zinc-500">Agents Included</div>
+						<div className="text-xs text-zinc-500">Agents (by id)</div>
 						<div className="font-medium">
-							{(config.evaluation.run.include_agents?.length
-								? config.evaluation.run.include_agents
-								: config.agents.map((a) => a.id)
-							).join(", ") || "—"}
+							{config.agents.map((a) => a.id).join(", ") || "—"}
 						</div>
 					</div>
 					{config.description && (
