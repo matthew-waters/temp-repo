@@ -1,3 +1,4 @@
+// src/components/AgentsConfigurator.tsx
 "use client";
 import React from "react";
 import SectionCard from "./SectionCard";
@@ -7,14 +8,15 @@ import { Plus, Trash2, SplitSquareHorizontal } from "lucide-react";
 type Props = {
 	agents: Agent[];
 	setAgents: (next: Agent[]) => void;
-	agentTypes: Option[]; // from /catalog.agent_types
-	retrieverTypes: Option[]; // from /catalog.retriever_types
-	llmInterfaces: Option[]; // from /catalog.llm_interfaces
+	agentTypes: Option[];
+	retrieverTypes: Option[];
+	llmInterfaces: Option[];
+	llmModels: Option[]; // id = provider model id (value), label = friendly name (shown)
 };
 
 const makeAgentForType = (t: Option): Agent => ({
-	id: t.id, // unique because we enforce one-per-type
-	name: t.label, // human-friendly name shown in UI
+	id: t.id,
+	name: t.label,
 	agent_type: t.id,
 	retriever: { retriever_type: "", top_k: 5 },
 	llm: { llm_type: "", model: "", region: "", temperature: 0.0 },
@@ -27,6 +29,7 @@ export default function AgentsConfigurator({
 	agentTypes,
 	retrieverTypes,
 	llmInterfaces,
+	llmModels,
 }: Props) {
 	const [selectedIndex, setSelectedIndex] = React.useState(0);
 	const selected = agents[selectedIndex];
@@ -34,12 +37,7 @@ export default function AgentsConfigurator({
 	const usedTypes = new Set(agents.map((a) => a.agent_type).filter(Boolean));
 	const labelFor = (id: string) =>
 		agentTypes.find((o) => o.id === id)?.label || id;
-
-	// Types you can still add (not already used)
 	const unusedAgentTypes = agentTypes.filter((o) => !usedTypes.has(o.id));
-
-	// Types you can select in the editor for THIS agent:
-	// include its current type + any unused ones
 	const selectableFor = (currentType: string) =>
 		agentTypes.filter((o) => o.id === currentType || !usedTypes.has(o.id));
 
@@ -139,7 +137,7 @@ export default function AgentsConfigurator({
 				{/* Editor */}
 				{selected && (
 					<div className="space-y-6">
-						{/* Agent Type (only editable field for identity) */}
+						{/* Agent Type */}
 						<div className="space-y-2">
 							<label className="text-sm font-medium">Agent Type</label>
 							<select
@@ -147,12 +145,9 @@ export default function AgentsConfigurator({
 								value={selected.agent_type}
 								onChange={(e) => {
 									const newType = e.target.value;
-									// auto-sync id + name with the chosen type
 									update(selectedIndex, ["agent_type"], newType);
 									update(selectedIndex, ["id"], newType);
 									update(selectedIndex, ["name"], labelFor(newType));
-									// (Optional) reset retriever if you want to enforce compatibility later
-									// update(selectedIndex, ["retriever", "retriever_type"], "");
 								}}
 							>
 								{selectableFor(selected.agent_type).map((t) => (
@@ -162,8 +157,8 @@ export default function AgentsConfigurator({
 								))}
 							</select>
 							<p className="text-xs text-zinc-500">
-								Each agent type can be selected only once. ID and Name are
-								derived from the type.
+								Each agent type can be selected only once. ID and Name follow
+								the type.
 							</p>
 						</div>
 
@@ -220,9 +215,8 @@ export default function AgentsConfigurator({
 									value={selected.llm.llm_type}
 									onChange={(e) => {
 										update(selectedIndex, ["llm", "llm_type"], e.target.value);
-										// Reset model/region when provider changes if you prefer
-										// update(selectedIndex, ["llm","model"], "");
-										// update(selectedIndex, ["llm","region"], "");
+										// Optional: clear model when interface changes
+										// update(selectedIndex, ["llm", "model"], "");
 									}}
 								>
 									<option value="">
@@ -238,16 +232,28 @@ export default function AgentsConfigurator({
 								</select>
 							</div>
 
+							{/* MODEL DROPDOWN (simple list from registry) */}
 							<div className="space-y-2 md:col-span-2">
 								<label className="text-sm font-medium">Model</label>
-								<input
+								<select
 									className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
 									value={selected.llm.model}
 									onChange={(e) =>
 										update(selectedIndex, ["llm", "model"], e.target.value)
 									}
-									placeholder="e.g., gpt-4o-mini / claude-3-5-sonnet"
-								/>
+								>
+									<option value="">
+										{llmModels.length ? "Select model…" : "No models available"}
+									</option>
+									{llmModels.map((m) => (
+										<option key={m.id} value={m.id}>
+											{m.label}
+										</option>
+									))}
+								</select>
+								<p className="text-xs text-zinc-500">
+									Stores the provider model ID in config (e.g., Bedrock id).
+								</p>
 							</div>
 
 							<div className="space-y-2 md:col-span-1">
@@ -284,14 +290,6 @@ export default function AgentsConfigurator({
 					</div>
 				)}
 			</div>
-
-			{/* Helper note if all used */}
-			{unusedAgentTypes.length === 0 && agentTypes.length > 0 && (
-				<div className="mt-3 text-xs text-zinc-500">
-					All agent types have been added. Remove one to choose a different
-					type.
-				</div>
-			)}
 		</SectionCard>
 	);
 }
