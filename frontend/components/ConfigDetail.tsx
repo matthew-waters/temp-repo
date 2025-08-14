@@ -75,10 +75,7 @@ export default function ConfigDetail({
 		map: Record<string, string>
 	) => (id && map[id]) || id || "—";
 
-	const datasetId =
-		config.data_ingestion.ingestion_corpus.dataset_id ||
-		config.data_ingestion.test_set.dataset_id ||
-		"";
+	const datasetId = config.data_ingestion.dataset_id || "";
 
 	const chunk = config.chunking;
 	const emb = config.qdrant_db.parameters.embedding;
