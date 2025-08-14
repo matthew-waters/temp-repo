@@ -20,7 +20,6 @@ export default function ConfigDetail({ item, onBack }: Props) {
 
 	const chunk = config.chunking;
 	const emb = config.qdrant_db.parameters.embedding;
-	const distance = config.qdrant_db.parameters.distance_metric;
 
 	return (
 		<div className="space-y-6">
