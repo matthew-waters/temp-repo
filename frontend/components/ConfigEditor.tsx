@@ -14,7 +14,6 @@ import yaml from "js-yaml";
 import { FileJson, Save } from "lucide-react";
 import AgentsConfigurator from "./AgentsConfigurator";
 import { runExperiment } from "../lib/api";
-import { fetchDatasetPaths } from "../lib/api";
 
 type Props = {
 	datasetOptions: Option[];
@@ -205,50 +204,29 @@ export default function ConfigEditor({
 					>
 						<Save size={14} /> Save Config
 					</button>
-					<div className="flex gap-2">
-						<button
-							type="button"
-							onClick={onCancel}
-							className="px-3 py-2 text-sm rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-						>
-							Cancel
-						</button>
-
-						<button
-							type="button"
-							onClick={() => {
-								const saved = saveConfig({ ...cfg });
-								onSave(saved);
-							}}
-							className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 px-3 py-2 text-sm shadow hover:opacity-90"
-						>
-							Save
-						</button>
-
-						<button
-							type="button"
-							onClick={async () => {
-								const saved = saveConfig({ ...cfg });
-								try {
-									await runExperiment({
-										id: saved.id,
-										name: saved.name,
-										config: saved.config,
-									});
-									onSave(saved); // navigate to detail if that's your flow
-									// Optional: toast success
-								} catch (err: any) {
-									// Optional: toast error
-									console.error(err);
-									alert(err?.message || "Failed to start run");
-								}
-							}}
-							className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 text-white px-3 py-2 text-sm shadow hover:opacity-90"
-							title="Save this config and send it to the backend to run"
-						>
-							Save & Run
-						</button>
-					</div>
+					<button
+						type="button"
+						onClick={async () => {
+							const saved = saveConfig({ ...cfg });
+							try {
+								await runExperiment({
+									id: saved.id,
+									name: saved.name,
+									config: saved.config,
+								});
+								onSave(saved); // navigate to detail if that's your flow
+								// Optional: toast success
+							} catch (err: any) {
+								// Optional: toast error
+								console.error(err);
+								alert(err?.message || "Failed to start run");
+							}
+						}}
+						className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 text-white px-3 py-2 text-sm shadow hover:opacity-90"
+						title="Save this config and send it to the backend to run"
+					>
+						Save & Run
+					</button>
 				</div>
 			</div>
 
@@ -426,7 +404,6 @@ export default function ConfigEditor({
 				setAgents={setAgents}
 				agentTypes={agentTypes}
 				retrieverTypes={retrieverTypes}
-				llmInterfaces={llmInterfaces}
 				llmModels={llmModels}
 			/>
 
