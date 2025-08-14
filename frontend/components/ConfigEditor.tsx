@@ -14,6 +14,7 @@ import yaml from "js-yaml";
 import { FileJson, Save } from "lucide-react";
 import AgentsConfigurator from "./AgentsConfigurator";
 import { runExperiment } from "../lib/api";
+import { fetchDatasetPaths } from "../lib/api";
 
 type Props = {
 	datasetOptions: Option[];
@@ -59,13 +60,32 @@ export default function ConfigEditor({
 		});
 	};
 
-	const onSelectDatasetId = (id: string) => {
-		update(["data_ingestion", "ingestion_corpus", "dataset_id"], id);
-		update(["data_ingestion", "test_set", "dataset_id"], id);
+	const [isResolvingDataset, setIsResolvingDataset] = useState(false);
+
+	const onSelectDatasetId = async (id: string) => {
+		// set chosen id immediately
+		update(["data_ingestion", "dataset_id"], id);
+
+		// optimistic: clear existing paths while resolving
 		update(["data_ingestion", "ingestion_corpus", "data_path"], "");
 		update(["data_ingestion", "test_set", "data_path"], "");
-		update(["data_ingestion", "ingestion_corpus", "document_type"], "");
-		update(["data_ingestion", "test_set", "document_type"], "");
+		update(["data_ingestion", "ingestion_corpus", "document_type"], "json");
+		update(["data_ingestion", "test_set", "document_type"], "json");
+
+		if (!id) return;
+
+		try {
+			setIsResolvingDataset(true);
+			const { corpus_path, test_set_path } = await fetchDatasetPaths(id);
+
+			update(["data_ingestion", "ingestion_corpus", "data_path"], corpus_path);
+			update(["data_ingestion", "test_set", "data_path"], test_set_path);
+		} catch (e: any) {
+			console.error(e);
+			// leave paths blank; user can reselect or fix registry
+		} finally {
+			setIsResolvingDataset(false);
+		}
 	};
 
 	const onSelectEmbeddingModel = (id: string) => {
@@ -298,9 +318,10 @@ export default function ConfigEditor({
 				<div className="space-y-2 md:w-[420px]">
 					<label className="text-sm font-medium">Select dataset</label>
 					<select
-						className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-						value={cfg.data_ingestion.ingestion_corpus.dataset_id ?? ""}
+						className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm disabled:opacity-60"
+						value={cfg.data_ingestion.dataset_id ?? ""}
 						onChange={(e) => onSelectDatasetId(e.target.value)}
+						disabled={isResolvingDataset}
 					>
 						<option value="" disabled>
 							{datasetOptions.length
@@ -314,12 +335,16 @@ export default function ConfigEditor({
 						))}
 					</select>
 					<p className="text-xs text-zinc-500">
-						Only the <code>dataset_id</code> is stored. Paths are resolved on
-						the backend.
+						Only the <code>dataset_id</code> is chosen here. The required file
+						paths are resolved automatically.
 					</p>
+					{isResolvingDataset && (
+						<div className="text-xs text-zinc-500">
+							Resolving dataset paths…
+						</div>
+					)}
 				</div>
 			</SectionCard>
-
 			{/* Embedding */}
 			<SectionCard title="Embedding" icon={<span>🧠</span>}>
 				<div className="grid md:grid-cols-3 gap-4">

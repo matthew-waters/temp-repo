@@ -40,3 +40,15 @@ export async function runExperiment(payload: {
 	}
 	return res.json() as Promise<{ status: string; message: string; echo: any }>;
 }
+
+export async function fetchDatasetPaths(datasetId: string) {
+	const res = await fetch(
+		`${BASE}/datasets/${encodeURIComponent(datasetId)}/paths`,
+		{
+			cache: "no-store",
+		}
+	);
+	if (!res.ok)
+		throw new Error(`Failed to resolve dataset "${datasetId}" (${res.status})`);
+	return (await res.json()) as { corpus_path: string; test_set_path: string };
+}
