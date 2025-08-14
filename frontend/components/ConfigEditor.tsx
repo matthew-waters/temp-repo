@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import SectionCard from "./SectionCard";
 import type {
 	Agent,
@@ -10,21 +10,93 @@ import type {
 	MetricGroups,
 } from "../lib/types";
 import { emptyConfig } from "../lib/defaults";
-import yaml from "js-yaml";
-import { FileJson, Save } from "lucide-react";
+import { Save, Play } from "lucide-react";
 import AgentsConfigurator from "./AgentsConfigurator";
 import { runExperiment } from "../lib/api";
+
+/** Checkbox list for metrics WITH descriptions */
+const MetricCheckboxes: React.FC<{
+	options: { id: string; label: string; description?: string }[];
+	value: string[];
+	onChange: (next: string[]) => void;
+}> = ({ options, value, onChange }) => {
+	const toggle = (id: string) => {
+		const set = new Set(value);
+		set.has(id) ? set.delete(id) : set.add(id);
+		onChange(Array.from(set));
+	};
+	const allIds = options.map((o) => o.id);
+
+	return (
+		<div className="space-y-3">
+			<div className="flex items-center gap-2">
+				<button
+					type="button"
+					onClick={() => onChange(allIds)}
+					className="text-xs px-2 py-1 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+					disabled={!options.length}
+				>
+					Select all
+				</button>
+				<button
+					type="button"
+					onClick={() => onChange([])}
+					className="text-xs px-2 py-1 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+					disabled={!value.length}
+				>
+					Clear
+				</button>
+			</div>
+
+			<div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-auto pr-1">
+				{options.map((opt) => {
+					const checked = value.includes(opt.id);
+					return (
+						<div
+							key={opt.id}
+							className={`rounded-lg border p-3 ${
+								checked
+									? "border-zinc-400 bg-zinc-50 dark:bg-zinc-900"
+									: "border-zinc-200 dark:border-zinc-800"
+							}`}
+							title={opt.description || ""}
+						>
+							<label className="flex items-center gap-2 text-sm">
+								<input
+									type="checkbox"
+									checked={checked}
+									onChange={() => toggle(opt.id)}
+								/>
+								<span className="truncate">{opt.label}</span>
+								{opt.description && (
+									<span className="ml-auto text-xs text-zinc-500">ℹ️</span>
+								)}
+							</label>
+							{opt.description && (
+								<div className="mt-2 text-xs leading-snug text-zinc-500 line-clamp-3">
+									{opt.description}
+								</div>
+							)}
+						</div>
+					);
+				})}
+				{!options.length && (
+					<div className="text-xs text-zinc-500">No metrics available</div>
+				)}
+			</div>
+		</div>
+	);
+};
 
 type Props = {
 	datasetOptions: Option[];
 
 	agentTypes: Option[];
 	retrieverTypes: Option[];
-	llmInterfaces: Option[];
 	chunkingStrategies: Option[];
 	embeddingModels: Option[];
-	evaluationMetricGroups: MetricGroups; // ← NEW
-	llmModels: Option[];
+	evaluationMetricGroups: MetricGroups;
+	llmModels: Option[]; // provider model-id list
 
 	onCancel: () => void;
 	onSave: (saved: SavedConfig) => void;
@@ -35,7 +107,6 @@ export default function ConfigEditor({
 	datasetOptions,
 	agentTypes,
 	retrieverTypes,
-	llmInterfaces,
 	chunkingStrategies,
 	embeddingModels,
 	evaluationMetricGroups,
@@ -45,6 +116,7 @@ export default function ConfigEditor({
 	saveConfig,
 }: Props) {
 	const [cfg, setCfg] = useState<ExperimentConfig>(() => emptyConfig());
+	const [isRunning, setIsRunning] = useState(false);
 
 	const setAgents = (next: Agent[]) =>
 		setCfg((prev) => ({ ...prev, agents: next }));
@@ -67,118 +139,73 @@ export default function ConfigEditor({
 		update(["qdrant_db", "parameters", "embedding", "embedding_model"], id);
 	};
 
-	const downloadYAML = () => {
-		const out = { experiment: { ...cfg } };
-		const y = yaml.dump(out, { noRefs: true, lineWidth: 120 });
-		const blob = new Blob([y], { type: "text/yaml" });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement("a");
-		a.href = url;
-		a.download = `${cfg.name || "experiment"}.yaml`;
-		a.click();
-		URL.revokeObjectURL(url);
+	// ---------- Validation ----------
+	type Validation = { ok: boolean; errors: string[] };
+
+	const validate = (c: ExperimentConfig): Validation => {
+		const errs: string[] = [];
+
+		// Basic
+		if (!c.name?.trim()) errs.push("Experiment name is required.");
+		if (!c.data_ingestion?.dataset_id) errs.push("Select a dataset.");
+
+		// Embedding
+		if (!c.qdrant_db.parameters.embedding.embedding_model)
+			errs.push("Select an embedding model.");
+
+		// Chunking
+		if (!c.chunking.chunking_type) errs.push("Select a chunking strategy.");
+
+		// Agents
+		if (!c.agents?.length) errs.push("Add at least one agent.");
+		(c.agents || []).forEach((a, idx) => {
+			if (!a.retriever.retriever_type)
+				errs.push(`Agent ${idx + 1}: select a retriever type.`);
+			if (!(typeof a.retriever.top_k === "number") || a.retriever.top_k <= 0)
+				errs.push(`Agent ${idx + 1}: set Top K (> 0).`);
+			if (!a.llm?.model) errs.push(`Agent ${idx + 1}: select an LLM model.`);
+		});
+
+		// Metrics
+		const totalMetrics =
+			(c.evaluation.metrics.agent?.length || 0) +
+			(c.evaluation.metrics.retrieval?.length || 0) +
+			(c.evaluation.metrics.generation?.length || 0) +
+			(c.evaluation.metrics.aggregate?.length || 0);
+		if (totalMetrics < 1) errs.push("Select at least one evaluation metric.");
+
+		// Judge model
+		if (!c.evaluation.judge_llm?.model)
+			errs.push("Select an evaluator (judge) model.");
+
+		return { ok: errs.length === 0, errors: errs };
 	};
 
-	// Reusable multi-select <select multiple>
-	const MultiSelect: React.FC<{
-		value: string[];
-		options: Option[];
-		onChange: (next: string[]) => void;
-		size?: number;
-	}> = ({ value, options, onChange, size = 6 }) => {
-		return (
-			<select
-				multiple
-				size={Math.min(size, Math.max(3, options.length))}
-				className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-2 text-sm"
-				value={value}
-				onChange={(e) => {
-					const next = Array.from(e.target.selectedOptions).map((o) => o.value);
-					onChange(next);
-				}}
-			>
-				{options.map((opt) => (
-					<option key={opt.id} value={opt.id}>
-						{opt.label}
-					</option>
-				))}
-			</select>
-		);
+	const { ok: isValid, errors } = useMemo(() => validate(cfg), [cfg]);
+
+	const doSave = () => {
+		if (!isValid) return;
+		const saved = saveConfig({ ...cfg });
+		onSave(saved);
 	};
 
-	// Reusable checkbox list for metric options
-	const MetricCheckboxes: React.FC<{
-		options: { id: string; label: string; description?: string }[];
-		value: string[];
-		onChange: (next: string[]) => void;
-	}> = ({ options, value, onChange }) => {
-		const toggle = (id: string) => {
-			const set = new Set(value);
-			set.has(id) ? set.delete(id) : set.add(id);
-			onChange(Array.from(set));
-		};
-		const allIds = options.map((o) => o.id);
-
-		return (
-			<div className="space-y-3">
-				<div className="flex items-center gap-2">
-					<button
-						type="button"
-						onClick={() => onChange(allIds)}
-						className="text-xs px-2 py-1 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-						disabled={!options.length}
-					>
-						Select all
-					</button>
-					<button
-						type="button"
-						onClick={() => onChange([])}
-						className="text-xs px-2 py-1 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-						disabled={!value.length}
-					>
-						Clear
-					</button>
-				</div>
-
-				<div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-auto pr-1">
-					{options.map((opt) => {
-						const checked = value.includes(opt.id);
-						return (
-							<div
-								key={opt.id}
-								className={`rounded-lg border p-3 ${
-									checked
-										? "border-zinc-400 bg-zinc-50 dark:bg-zinc-900"
-										: "border-zinc-200 dark:border-zinc-800"
-								}`}
-								title={opt.description || ""}
-							>
-								<label className="flex items-center gap-2 text-sm">
-									<input
-										type="checkbox"
-										checked={checked}
-										onChange={() => toggle(opt.id)}
-									/>
-									<span className="truncate">{opt.label}</span>
-									{/* Lightweight info hint (hover shows full description via title) */}
-									{opt.description && (
-										<span className="ml-auto text-xs text-zinc-500">ℹ️</span>
-									)}
-								</label>
-								{opt.description && (
-									<div className="mt-2 text-xs leading-snug text-zinc-500 line-clamp-3">
-										{opt.description}
-									</div>
-								)}
-							</div>
-						);
-					})}
-					{!options.length && (
-						<div className="text-xs text-zinc-500">No metrics available</div>
-					)}
-				</div>
-			</div>
-		);
+	const doSaveAndRun = async () => {
+		if (!isValid) return;
+		const saved = saveConfig({ ...cfg });
+		try {
+			setIsRunning(true);
+			await runExperiment({
+				id: saved.id,
+				name: saved.name,
+				config: saved.config,
+			});
+			onSave(saved); // e.g., navigate to detail
+		} catch (err: any) {
+			console.error(err);
+			alert(err?.message || "Failed to start run");
+		} finally {
+			setIsRunning(false);
+		}
 	};
 
 	return (
@@ -194,56 +221,44 @@ export default function ConfigEditor({
 					>
 						Cancel
 					</button>
+
 					<button
 						type="button"
-						onClick={() => {
-							const saved = saveConfig({ ...cfg });
-							onSave(saved);
-						}}
-						className="inline-flex items-center gap-2 rounded-xl bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 px-3 py-2 text-sm shadow hover:opacity-90"
+						onClick={doSave}
+						disabled={!isValid || isRunning}
+						className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm shadow ${
+							!isValid || isRunning
+								? "bg-zinc-300 text-zinc-600 cursor-not-allowed dark:bg-zinc-800 dark:text-zinc-500"
+								: "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 hover:opacity-90"
+						}`}
+						title={
+							!isValid ? "Complete required fields to enable save" : "Save"
+						}
 					>
-						<Save size={14} /> Save Config
+						<Save size={14} /> Save
 					</button>
+
 					<button
 						type="button"
-						onClick={async () => {
-							const saved = saveConfig({ ...cfg });
-							try {
-								await runExperiment({
-									id: saved.id,
-									name: saved.name,
-									config: saved.config,
-								});
-								onSave(saved); // navigate to detail if that's your flow
-								// Optional: toast success
-							} catch (err: any) {
-								// Optional: toast error
-								console.error(err);
-								alert(err?.message || "Failed to start run");
-							}
-						}}
-						className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 text-white px-3 py-2 text-sm shadow hover:opacity-90"
-						title="Save this config and send it to the backend to run"
+						onClick={doSaveAndRun}
+						disabled={!isValid || isRunning}
+						className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm shadow ${
+							!isValid || isRunning
+								? "bg-emerald-400/60 text-white cursor-not-allowed"
+								: "bg-emerald-600 text-white hover:opacity-90"
+						}`}
+						title={
+							!isValid ? "Complete required fields to enable run" : "Save & Run"
+						}
 					>
-						Save & Run
+						<Play size={14} />
+						{isRunning ? "Running…" : "Save & Run"}
 					</button>
 				</div>
 			</div>
 
 			{/* Basics */}
-			<SectionCard
-				title="Basics"
-				icon={<span>🧾</span>}
-				actions={
-					<button
-						onClick={downloadYAML}
-						className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 dark:border-zinc-800 px-3 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
-						type="button"
-					>
-						<FileJson size={14} /> Download YAML
-					</button>
-				}
-			>
+			<SectionCard title="Basics" icon={<span>🧾</span>}>
 				<div className="grid md:grid-cols-2 gap-4">
 					<div className="space-y-2">
 						<label className="text-sm font-medium">Experiment Name</label>
@@ -289,10 +304,11 @@ export default function ConfigEditor({
 					</select>
 					<p className="text-xs text-zinc-500">
 						Only the <code>dataset_id</code> is stored. The backend resolves
-						file paths when running.
+						paths when running.
 					</p>
 				</div>
 			</SectionCard>
+
 			{/* Embedding */}
 			<SectionCard title="Embedding" icon={<span>🧠</span>}>
 				<div className="grid md:grid-cols-3 gap-4">
@@ -301,12 +317,7 @@ export default function ConfigEditor({
 						<select
 							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
 							value={cfg.qdrant_db.parameters.embedding.embedding_model || ""}
-							onChange={(e) =>
-								update(
-									["qdrant_db", "parameters", "embedding", "embedding_model"],
-									e.target.value
-								)
-							}
+							onChange={(e) => onSelectEmbeddingModel(e.target.value)}
 						>
 							<option value="">
 								{embeddingModels.length
@@ -455,7 +466,7 @@ export default function ConfigEditor({
 					</div>
 				</div>
 
-				{/* Evaluator model picker remains the same */}
+				{/* Evaluator Model (LLM-as-a-judge) */}
 				<div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4 mt-6">
 					<div className="text-sm font-medium mb-2">Evaluator Model</div>
 					<p className="text-xs text-zinc-500 mb-3">
@@ -472,7 +483,11 @@ export default function ConfigEditor({
 								update(["evaluation", "judge_llm", "model"], e.target.value)
 							}
 						>
-							<option value="">{/* ... */}Select evaluator model…</option>
+							<option value="">
+								{llmModels.length
+									? "Select evaluator model…"
+									: "No models available"}
+							</option>
 							{llmModels.map((m) => (
 								<option key={m.id} value={m.id}>
 									{m.label}
@@ -482,6 +497,19 @@ export default function ConfigEditor({
 					</div>
 				</div>
 			</SectionCard>
+
+			{/* Validation checklist */}
+			{!isValid && (
+				<SectionCard title="Requirements" icon={<span>✅</span>}>
+					<ul className="list-disc pl-5 space-y-1 text-sm">
+						{errors.map((e, i) => (
+							<li key={i} className="text-red-600 dark:text-red-400">
+								{e}
+							</li>
+						))}
+					</ul>
+				</SectionCard>
+			)}
 		</div>
 	);
 }
