@@ -1,4 +1,3 @@
-// src/components/ConfigEditor.tsx
 "use client";
 
 import React, { useState } from "react";
@@ -8,6 +7,7 @@ import type {
 	ExperimentConfig,
 	SavedConfig,
 	Option,
+	MetricGroups,
 } from "../lib/types";
 import { emptyConfig } from "../lib/defaults";
 import yaml from "js-yaml";
@@ -22,8 +22,8 @@ type Props = {
 	llmInterfaces: Option[];
 	chunkingStrategies: Option[];
 	embeddingModels: Option[];
-	evaluationMetrics: Option[];
-	llmModels: Option[]; // provider model-id as id, friendly label as label
+	evaluationMetricGroups: MetricGroups; // ← NEW
+	llmModels: Option[];
 
 	onCancel: () => void;
 	onSave: (saved: SavedConfig) => void;
@@ -37,7 +37,7 @@ export default function ConfigEditor({
 	llmInterfaces,
 	chunkingStrategies,
 	embeddingModels,
-	evaluationMetrics,
+	evaluationMetricGroups,
 	llmModels,
 	onCancel,
 	onSave,
@@ -58,12 +58,6 @@ export default function ConfigEditor({
 		});
 	};
 
-	const parseCSV = (s: string): string[] =>
-		s
-			.split(",")
-			.map((x) => x.trim())
-			.filter(Boolean);
-
 	const onSelectDatasetId = (id: string) => {
 		update(["data_ingestion", "ingestion_corpus", "dataset_id"], id);
 		update(["data_ingestion", "test_set", "dataset_id"], id);
@@ -78,7 +72,6 @@ export default function ConfigEditor({
 	};
 
 	const downloadYAML = () => {
-		// No run plan, just dump the config as-is
 		const out = { experiment: { ...cfg } };
 		const y = yaml.dump(out, { noRefs: true, lineWidth: 120 });
 		const blob = new Blob([y], { type: "text/yaml" });
@@ -88,6 +81,33 @@ export default function ConfigEditor({
 		a.download = `${cfg.name || "experiment"}.yaml`;
 		a.click();
 		URL.revokeObjectURL(url);
+	};
+
+	// Reusable multi-select <select multiple>
+	const MultiSelect: React.FC<{
+		value: string[];
+		options: Option[];
+		onChange: (next: string[]) => void;
+		size?: number;
+	}> = ({ value, options, onChange, size = 6 }) => {
+		return (
+			<select
+				multiple
+				size={Math.min(size, Math.max(3, options.length))}
+				className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-2 text-sm"
+				value={value}
+				onChange={(e) => {
+					const next = Array.from(e.target.selectedOptions).map((o) => o.value);
+					onChange(next);
+				}}
+			>
+				{options.map((opt) => (
+					<option key={opt.id} value={opt.id}>
+						{opt.label}
+					</option>
+				))}
+			</select>
+		);
 	};
 
 	return (
@@ -153,7 +173,7 @@ export default function ConfigEditor({
 				</div>
 			</SectionCard>
 
-			{/* Dataset (single selector) */}
+			{/* Dataset */}
 			<SectionCard title="Dataset" icon={<span>🗃️</span>}>
 				<div className="space-y-2 md:w-[420px]">
 					<label className="text-sm font-medium">Select dataset</label>
@@ -304,32 +324,64 @@ export default function ConfigEditor({
 				llmModels={llmModels}
 			/>
 
-			{/* Evaluation metrics + LLM override */}
+			{/* Evaluation — grouped pickers */}
 			<SectionCard title="Evaluation" icon={<span>📊</span>}>
-				<div className="grid md:grid-cols-3 gap-4">
-					{(["retrieval", "generation", "aggregate", "agent"] as const).map(
-						(field) => (
-							<div key={field} className="space-y-2">
-								<label className="text-sm font-medium">
-									{field[0].toUpperCase() + field.slice(1)} Metrics
-								</label>
-								<input
-									className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-									value={cfg.evaluation.metrics[field].join(", ")}
-									onChange={(e) =>
-										update(
-											["evaluation", "metrics", field],
-											parseCSV(e.target.value)
-										)
-									}
-									placeholder="Comma-separated"
-								/>
-							</div>
-						)
-					)}
+				<div className="grid md:grid-cols-2 gap-6">
+					{/* Retrieval */}
+					<div>
+						<div className="text-sm font-medium mb-2">Retrieval Metrics</div>
+						<MultiSelect
+							value={cfg.evaluation.metrics.retrieval}
+							options={evaluationMetricGroups.retrieval}
+							onChange={(next) =>
+								update(["evaluation", "metrics", "retrieval"], next)
+							}
+							size={Math.min(8, evaluationMetricGroups.retrieval.length)}
+						/>
+					</div>
+
+					{/* Agent */}
+					<div>
+						<div className="text-sm font-medium mb-2">Agent Metrics</div>
+						<MultiSelect
+							value={cfg.evaluation.metrics.agent}
+							options={evaluationMetricGroups.agent}
+							onChange={(next) =>
+								update(["evaluation", "metrics", "agent"], next)
+							}
+							size={Math.min(8, evaluationMetricGroups.agent.length)}
+						/>
+					</div>
+
+					{/* Generation */}
+					<div>
+						<div className="text-sm font-medium mb-2">Generation Metrics</div>
+						<MultiSelect
+							value={cfg.evaluation.metrics.generation}
+							options={evaluationMetricGroups.generation}
+							onChange={(next) =>
+								update(["evaluation", "metrics", "generation"], next)
+							}
+							size={Math.min(8, evaluationMetricGroups.generation.length)}
+						/>
+					</div>
+
+					{/* Aggregate */}
+					<div>
+						<div className="text-sm font-medium mb-2">Aggregate Metrics</div>
+						<MultiSelect
+							value={cfg.evaluation.metrics.aggregate}
+							options={evaluationMetricGroups.aggregate}
+							onChange={(next) =>
+								update(["evaluation", "metrics", "aggregate"], next)
+							}
+							size={Math.min(8, evaluationMetricGroups.aggregate.length)}
+						/>
+					</div>
 				</div>
 
-				<div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4 mt-4">
+				{/* LLM Override (unchanged) */}
+				<div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4 mt-6">
 					<div className="text-sm font-medium mb-2">
 						Evaluation LLM Override
 					</div>
