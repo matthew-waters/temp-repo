@@ -86,3 +86,26 @@ export async function getJobStatus(jobId: string): Promise<StatusResponse> {
 	}
 	return res.json();
 }
+
+// ---- Results API ----
+export type ResultSummary = {
+	experiment_id: string;
+	name: string;
+	dataset_id: string;
+	start_time: string; // ISO
+	end_time: string; // ISO
+	duration_seconds: number;
+	agents: string[];
+	dir_name: string;
+	report_path: string;
+};
+
+export async function fetchResultsIndex(): Promise<ResultSummary[]> {
+	const res = await fetch(`${BASE}/results`, { cache: "no-store" });
+	if (!res.ok) throw new Error(`Failed to list results (${res.status})`);
+	return res.json();
+}
+
+export function reportDownloadUrl(resultId: string) {
+	return `${BASE}/results/${encodeURIComponent(resultId)}/report`;
+}
