@@ -87,8 +87,6 @@ export default function ConfigDetail({ item, onBack }: Props) {
 							model id: {emb.embedding_model || "—"}
 							{", dim "}
 							{emb.embedding_length || "—"}
-							{" • "}
-							{distance || "—"}
 						</div>
 					</div>
 				</div>

@@ -276,7 +276,12 @@ export default function ConfigEditor({
 						<select
 							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
 							value={cfg.qdrant_db.parameters.embedding.embedding_model || ""}
-							onChange={(e) => onSelectEmbeddingModel(e.target.value)}
+							onChange={(e) =>
+								update(
+									["qdrant_db", "parameters", "embedding", "embedding_model"],
+									e.target.value
+								)
+							}
 						>
 							<option value="">
 								{embeddingModels.length
@@ -290,7 +295,8 @@ export default function ConfigEditor({
 							))}
 						</select>
 						<div className="text-xs text-zinc-500">
-							Stored as model id; backend can resolve type/length if needed.
+							Stores the provider model ID (e.g.,{" "}
+							<code>amazon.titan-embed-text-v1</code>).
 						</div>
 					</div>
 
@@ -307,21 +313,6 @@ export default function ConfigEditor({
 								)
 							}
 							placeholder="optional"
-						/>
-					</div>
-
-					<div className="space-y-2 md:col-span-1">
-						<label className="text-sm font-medium">Distance Metric</label>
-						<input
-							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-							value={cfg.qdrant_db.parameters.distance_metric}
-							onChange={(e) =>
-								update(
-									["qdrant_db", "parameters", "distance_metric"],
-									e.target.value
-								)
-							}
-							placeholder="e.g., cosine / dot / euclidean"
 						/>
 					</div>
 				</div>
