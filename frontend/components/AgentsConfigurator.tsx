@@ -1,5 +1,5 @@
-// src/components/AgentsConfigurator.tsx
 "use client";
+
 import React from "react";
 import SectionCard from "./SectionCard";
 import type { Agent, Option } from "../lib/types";
@@ -8,18 +8,17 @@ import { Plus, Trash2, SplitSquareHorizontal } from "lucide-react";
 type Props = {
 	agents: Agent[];
 	setAgents: (next: Agent[]) => void;
-	agentTypes: Option[];
-	retrieverTypes: Option[];
-	llmInterfaces: Option[];
-	llmModels: Option[]; // id = provider model id (value), label = friendly name (shown)
+	agentTypes: Option[]; // from /catalog.agent_types
+	retrieverTypes: Option[]; // from /catalog.retriever_types
+	llmModels: Option[]; // id = provider model id, label = friendly name
 };
 
 const makeAgentForType = (t: Option): Agent => ({
-	id: t.id,
+	id: t.id, // one-per-type enforced below
 	name: t.label,
 	agent_type: t.id,
 	retriever: { retriever_type: "", top_k: 5 },
-	llm: { llm_type: "", model: "", region: "", temperature: 0.0 },
+	llm: { model: "" }, // ONLY model now
 	overrides: { chunking: null, qdrant_db: null },
 });
 
@@ -28,7 +27,6 @@ export default function AgentsConfigurator({
 	setAgents,
 	agentTypes,
 	retrieverTypes,
-	llmInterfaces,
 	llmModels,
 }: Props) {
 	const [selectedIndex, setSelectedIndex] = React.useState(0);
@@ -37,6 +35,7 @@ export default function AgentsConfigurator({
 	const usedTypes = new Set(agents.map((a) => a.agent_type).filter(Boolean));
 	const labelFor = (id: string) =>
 		agentTypes.find((o) => o.id === id)?.label || id;
+
 	const unusedAgentTypes = agentTypes.filter((o) => !usedTypes.has(o.id));
 	const selectableFor = (currentType: string) =>
 		agentTypes.filter((o) => o.id === currentType || !usedTypes.has(o.id));
@@ -206,90 +205,40 @@ export default function AgentsConfigurator({
 							</div>
 						</div>
 
-						{/* LLM */}
-						<div className="grid md:grid-cols-4 gap-4">
-							<div className="space-y-2 md:col-span-1">
-								<label className="text-sm font-medium">LLM Interface</label>
-								<select
-									className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-									value={selected.llm.llm_type}
-									onChange={(e) => {
-										update(selectedIndex, ["llm", "llm_type"], e.target.value);
-										// Optional: clear model when interface changes
-										// update(selectedIndex, ["llm", "model"], "");
-									}}
-								>
-									<option value="">
-										{llmInterfaces.length
-											? "Select interface…"
-											: "No LLM interfaces"}
+						{/* LLM Model (only) */}
+						<div className="space-y-2">
+							<label className="text-sm font-medium">Model</label>
+							<select
+								className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
+								value={selected.llm.model}
+								onChange={(e) =>
+									update(selectedIndex, ["llm", "model"], e.target.value)
+								}
+							>
+								<option value="">
+									{llmModels.length ? "Select model…" : "No models available"}
+								</option>
+								{llmModels.map((m) => (
+									<option key={m.id} value={m.id}>
+										{m.label}
 									</option>
-									{llmInterfaces.map((p) => (
-										<option key={p.id} value={p.id}>
-											{p.label}
-										</option>
-									))}
-								</select>
-							</div>
-
-							{/* MODEL DROPDOWN (simple list from registry) */}
-							<div className="space-y-2 md:col-span-2">
-								<label className="text-sm font-medium">Model</label>
-								<select
-									className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-									value={selected.llm.model}
-									onChange={(e) =>
-										update(selectedIndex, ["llm", "model"], e.target.value)
-									}
-								>
-									<option value="">
-										{llmModels.length ? "Select model…" : "No models available"}
-									</option>
-									{llmModels.map((m) => (
-										<option key={m.id} value={m.id}>
-											{m.label}
-										</option>
-									))}
-								</select>
-								<p className="text-xs text-zinc-500">
-									Stores the provider model ID in config (e.g., Bedrock id).
-								</p>
-							</div>
-
-							<div className="space-y-2 md:col-span-1">
-								<label className="text-sm font-medium">Region</label>
-								<input
-									className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-									value={selected.llm.region}
-									onChange={(e) =>
-										update(selectedIndex, ["llm", "region"], e.target.value)
-									}
-									placeholder="optional"
-								/>
-							</div>
-
-							<div className="space-y-2 md:col-span-1">
-								<label className="text-sm font-medium">Temperature</label>
-								<input
-									type="number"
-									step={0.1}
-									min={0}
-									max={2}
-									className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-									value={selected.llm.temperature}
-									onChange={(e) =>
-										update(
-											selectedIndex,
-											["llm", "temperature"],
-											Number(e.target.value)
-										)
-									}
-								/>
-							</div>
+								))}
+							</select>
+							<p className="text-xs text-zinc-500">
+								Stores the provider model ID (e.g., Bedrock/OpenAI id) in the
+								config.
+							</p>
 						</div>
 					</div>
 				)}
 			</div>
+
+			{unusedAgentTypes.length === 0 && agentTypes.length > 0 && (
+				<div className="mt-3 text-xs text-zinc-500">
+					All agent types have been added. Remove one to choose a different
+					type.
+				</div>
+			)}
 		</SectionCard>
 	);
 }
