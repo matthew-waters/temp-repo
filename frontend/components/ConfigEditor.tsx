@@ -12,6 +12,7 @@ import type {
 import { emptyConfig } from "../lib/defaults";
 import { Save, Play } from "lucide-react";
 import AgentsConfigurator from "./AgentsConfigurator";
+import RunLogsModal from "./RunLogsModal";
 import { runExperiment } from "../lib/api";
 
 /** Checkbox list for metrics WITH descriptions */
@@ -189,17 +190,22 @@ export default function ConfigEditor({
 		onSave(saved);
 	};
 
+	const [logJob, setLogJob] = useState<{ jobId: string; name?: string } | null>(
+		null
+	);
+
 	const doSaveAndRun = async () => {
 		if (!isValid) return;
 		const saved = saveConfig({ ...cfg });
 		try {
 			setIsRunning(true);
-			await runExperiment({
+			const res = await runExperiment({
 				id: saved.id,
 				name: saved.name,
 				config: saved.config,
 			});
-			onSave(saved); // e.g., navigate to detail
+			setLogJob({ jobId: res.job_id, name: saved.name });
+			onSave(saved);
 		} catch (err: any) {
 			console.error(err);
 			alert(err?.message || "Failed to start run");
@@ -509,6 +515,14 @@ export default function ConfigEditor({
 						))}
 					</ul>
 				</SectionCard>
+			)}
+
+			{logJob && (
+				<RunLogsModal
+					jobId={logJob.jobId}
+					name={logJob.name}
+					onClose={() => setLogJob(null)}
+				/>
 			)}
 		</div>
 	);
