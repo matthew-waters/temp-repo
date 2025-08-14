@@ -112,8 +112,8 @@ export default function ConfigEditor({
 
 	// Reusable checkbox list for metric options
 	const MetricCheckboxes: React.FC<{
-		options: Option[];
-		value: string[]; // selected metric ids
+		options: { id: string; label: string; description?: string }[];
+		value: string[];
 		onChange: (next: string[]) => void;
 	}> = ({ options, value, onChange }) => {
 		const toggle = (id: string) => {
@@ -121,9 +121,7 @@ export default function ConfigEditor({
 			set.has(id) ? set.delete(id) : set.add(id);
 			onChange(Array.from(set));
 		};
-
 		const allIds = options.map((o) => o.id);
-		const isAllSelected = value.length && value.length === allIds.length;
 
 		return (
 			<div className="space-y-3">
@@ -144,30 +142,39 @@ export default function ConfigEditor({
 					>
 						Clear
 					</button>
-					{isAllSelected && (
-						<span className="text-xs text-zinc-500">All selected</span>
-					)}
 				</div>
 
-				<div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-auto pr-1">
+				<div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-64 overflow-auto pr-1">
 					{options.map((opt) => {
 						const checked = value.includes(opt.id);
 						return (
-							<label
+							<div
 								key={opt.id}
-								className={`flex items-center gap-2 text-sm rounded-lg px-3 py-2 border ${
+								className={`rounded-lg border p-3 ${
 									checked
 										? "border-zinc-400 bg-zinc-50 dark:bg-zinc-900"
 										: "border-zinc-200 dark:border-zinc-800"
 								}`}
+								title={opt.description || ""}
 							>
-								<input
-									type="checkbox"
-									checked={checked}
-									onChange={() => toggle(opt.id)}
-								/>
-								<span className="truncate">{opt.label}</span>
-							</label>
+								<label className="flex items-center gap-2 text-sm">
+									<input
+										type="checkbox"
+										checked={checked}
+										onChange={() => toggle(opt.id)}
+									/>
+									<span className="truncate">{opt.label}</span>
+									{/* Lightweight info hint (hover shows full description via title) */}
+									{opt.description && (
+										<span className="ml-auto text-xs text-zinc-500">ℹ️</span>
+									)}
+								</label>
+								{opt.description && (
+									<div className="mt-2 text-xs leading-snug text-zinc-500 line-clamp-3">
+										{opt.description}
+									</div>
+								)}
+							</div>
 						);
 					})}
 					{!options.length && (
@@ -383,10 +390,9 @@ export default function ConfigEditor({
 				llmModels={llmModels}
 			/>
 
-			{/* Evaluation — grouped checkbox pickers */}
+			{/* Evaluation — metrics + evaluator model */}
 			<SectionCard title="Evaluation" icon={<span>📊</span>}>
 				<div className="grid md:grid-cols-2 gap-6">
-					{/* Retrieval */}
 					<div>
 						<div className="text-sm font-medium mb-2">Retrieval Metrics</div>
 						<MetricCheckboxes
@@ -398,7 +404,6 @@ export default function ConfigEditor({
 						/>
 					</div>
 
-					{/* Agent */}
 					<div>
 						<div className="text-sm font-medium mb-2">Agent Metrics</div>
 						<MetricCheckboxes
@@ -410,7 +415,6 @@ export default function ConfigEditor({
 						/>
 					</div>
 
-					{/* Generation */}
 					<div>
 						<div className="text-sm font-medium mb-2">Generation Metrics</div>
 						<MetricCheckboxes
@@ -422,7 +426,6 @@ export default function ConfigEditor({
 						/>
 					</div>
 
-					{/* Aggregate */}
 					<div>
 						<div className="text-sm font-medium mb-2">Aggregate Metrics</div>
 						<MetricCheckboxes
@@ -435,7 +438,7 @@ export default function ConfigEditor({
 					</div>
 				</div>
 
-				{/* Evaluator Model (LLM-as-a-judge) */}
+				{/* Evaluator model picker remains the same */}
 				<div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4 mt-6">
 					<div className="text-sm font-medium mb-2">Evaluator Model</div>
 					<p className="text-xs text-zinc-500 mb-3">
@@ -452,11 +455,7 @@ export default function ConfigEditor({
 								update(["evaluation", "judge_llm", "model"], e.target.value)
 							}
 						>
-							<option value="">
-								{llmModels.length
-									? "Select evaluator model…"
-									: "No models available"}
-							</option>
+							<option value="">{/* ... */}Select evaluator model…</option>
 							{llmModels.map((m) => (
 								<option key={m.id} value={m.id}>
 									{m.label}

@@ -1,87 +1,64 @@
-from typing import Dict, List, Optional
+# backend/app/routers/catalog_registry.py
+from typing import Dict, List, Mapping
 from fastapi import APIRouter
 from pydantic import BaseModel
-
-# 👇 Adjust this import to wherever your registry lives
-# e.g. from mypkg.registry import ComponentRegistry
 from your_package.registry import ComponentRegistry
 
+router = APIRouter(prefix="/catalog", tags=["catalog"])
 
-# ---------- Pydantic shapes the frontend can consume ----------
 class Option(BaseModel):
     id: str
-    label: str  # human-readable name/description
+    label: str
+
+class MetricOption(BaseModel):
+    id: str
+    label: str
+    description: str
+
+class MetricGroups(BaseModel):
+    retrieval: List[MetricOption]
+    agent: List[MetricOption]
+    generation: List[MetricOption]
+    aggregate: List[MetricOption]
 
 class CatalogResponse(BaseModel):
     agent_types: List[Option]
     chunking_strategies: List[Option]
-    embedding_models: List[Option]
-    llm_interfaces: List[Option]
+    embedding_models: List[Option]          # id = provider id, label = friendly name
+    llm_interfaces: List[Option]            # (ok if unused by UI)
     retriever_types: List[Option]
-    evaluation_metrics: List[Option]
+    evaluation_metrics_grouped: MetricGroups
+    llm_models: List[Option]                # id = provider id, label = friendly name
 
-
-router = APIRouter(prefix="/catalog", tags=["catalog"])
-
-
-def _map_options(d: Dict[str, str]) -> List[Option]:
-    """
-    Turn {"id":"Label", ...} into sorted [{id, label}, ...]
-    We sort by label for nicer dropdown UX.
-    """
+def _map_options(d: Mapping[str, str]) -> List[Option]:
     return [Option(id=k, label=v) for k, v in sorted(d.items(), key=lambda kv: kv[1].lower())]
 
-
-def _ui() -> Dict[str, Dict[str, str]]:
-    """
-    ComponentRegistry.get_ui_registry() is expected to return:
-    {
-      "agent_types":        { "<id>": "<label>", ... },
-      "chunking_strategies":{ "<id>": "<label>", ... },
-      "embedding_models":   { "<id>": "<label>", ... },
-      "llm_interfaces":     { "<id>": "<label>", ... },
-      "retriever_types":    { "<id>": "<label>", ... },
-      "evaluation_metrics": { "<id>": "<label>", ... }
-    }
-    """
-    return ComponentRegistry.get_ui_registry()
-
-
-# -------------- All-in-one (reduces round-trips) --------------
 @router.get("", response_model=CatalogResponse)
 def get_full_catalog():
-    ui = _ui()
+    ui = ComponentRegistry.get_ui_registry()
+    grouped = ComponentRegistry.get_metrics_ui_grouped()
+
+    # If you already have functions for these, use them (kept inline here for brevity)
+    embedding_models = [
+        Option(id=model_id, label=name)
+        for name, model_id in sorted(ComponentRegistry.get_embedding_models().items(), key=lambda kv: kv[0].lower())
+    ]
+    llm_models = [
+        Option(id=model_id, label=name)
+        for name, model_id in sorted(ComponentRegistry.get_llm_models().items(), key=lambda kv: kv[0].lower())
+    ]
+
     return CatalogResponse(
         agent_types=_map_options(ui.get("agent_types", {})),
         chunking_strategies=_map_options(ui.get("chunking_strategies", {})),
-        embedding_models=_map_options(ui.get("embedding_models", {})),
+        embedding_models=embedding_models,
         llm_interfaces=_map_options(ui.get("llm_interfaces", {})),
         retriever_types=_map_options(ui.get("retriever_types", {})),
-        evaluation_metrics=_map_options(ui.get("evaluation_metrics", {})),
+        evaluation_metrics_grouped=MetricGroups(
+            retrieval=[MetricOption(**m) for m in grouped.get("retrieval", [])],
+            agent=[MetricOption(**m) for m in grouped.get("agent", [])],
+            generation=[MetricOption(**m) for m in grouped.get("generation", [])],
+            aggregate=[MetricOption(**m) for m in grouped.get("aggregate", [])],
+        ),
+        llm_models=llm_models,
     )
-
-
-# -------------- Granular endpoints (optional but handy) --------------
-@router.get("/agent-types", response_model=List[Option])
-def get_agent_types():
-    return _map_options(_ui().get("agent_types", {}))
-
-@router.get("/chunking-strategies", response_model=List[Option])
-def get_chunking_strategies():
-    return _map_options(_ui().get("chunking_strategies", {}))
-
-@router.get("/embedding-models", response_model=List[Option])
-def get_embedding_models():
-    return _map_options(_ui().get("embedding_models", {}))
-
-@router.get("/llm-interfaces", response_model=List[Option])
-def get_llm_interfaces():
-    return _map_options(_ui().get("llm_interfaces", {}))
-
-@router.get("/retriever-types", response_model=List[Option])
-def get_retriever_types():
-    return _map_options(_ui().get("retriever_types", {}))
-
-@router.get("/evaluation-metrics", response_model=List[Option])
-def get_evaluation_metrics():
-    return _map_options(_ui().get("evaluation_metrics", {}))
