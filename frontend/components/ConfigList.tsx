@@ -2,7 +2,8 @@
 import React from "react";
 import SectionCard from "./SectionCard";
 import type { SavedConfig } from "../lib/types";
-import { Plus, Eye, Trash2 } from "lucide-react";
+import { Plus, Eye, Trash2, Play } from "lucide-react";
+import { runExperiment } from "../lib/api";
 
 type Props = {
 	items: SavedConfig[];
@@ -17,6 +18,21 @@ export default function ConfigList({
 	onOpen,
 	onDelete,
 }: Props) {
+	const [runningId, setRunningId] = React.useState<string | null>(null);
+
+	const handleRun = async (c: SavedConfig) => {
+		try {
+			setRunningId(c.id);
+			await runExperiment({ id: c.id, name: c.name, config: c.config });
+			alert(`Experiment "${c.name || c.id}" sent to backend to run.`);
+		} catch (err: any) {
+			console.error(err);
+			alert(err?.message || "Failed to start run");
+		} finally {
+			setRunningId(null);
+		}
+	};
+
 	return (
 		<SectionCard
 			title="Saved Experiment Configs"
@@ -37,40 +53,61 @@ export default function ConfigList({
 						No configs yet. Create one to get started.
 					</div>
 				)}
-				{items.map((c) => (
-					<div
-						key={c.id}
-						className="flex items-center justify-between px-4 py-3 border-b last:border-b-0 border-zinc-200 dark:border-zinc-800"
-					>
-						<div className="min-w-0">
-							<div className="font-medium truncate">
-								{c.name || "(unnamed experiment)"}
+				{items.map((c) => {
+					const isRunning = runningId === c.id;
+					return (
+						<div
+							key={c.id}
+							className="flex items-center justify-between px-4 py-3 border-b last:border-b-0 border-zinc-200 dark:border-zinc-800"
+						>
+							<div className="min-w-0">
+								<div className="font-medium truncate">
+									{c.name || "(unnamed experiment)"}
+								</div>
+								<div className="text-xs text-zinc-500">
+									Updated {new Date(c.updatedAt).toLocaleString()} • Agents:{" "}
+									{c.config.agents.length}
+								</div>
 							</div>
-							<div className="text-xs text-zinc-500">
-								Updated {new Date(c.updatedAt).toLocaleString()} • Agents:{" "}
-								{c.config.agents.length}
+							<div className="flex items-center gap-2">
+								<button
+									type="button"
+									onClick={() => onOpen(c.id)}
+									className="px-2 py-1 text-sm rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 inline-flex items-center gap-1"
+									title="Open"
+									disabled={isRunning}
+								>
+									<Eye size={14} /> Open
+								</button>
+
+								<button
+									type="button"
+									onClick={() => handleRun(c)}
+									className={`px-2 py-1 text-sm rounded-lg inline-flex items-center gap-1 ${
+										isRunning
+											? "bg-emerald-400 text-white cursor-wait"
+											: "bg-emerald-600 text-white hover:opacity-90"
+									}`}
+									title="Send to backend to run"
+									disabled={isRunning}
+								>
+									<Play size={14} />
+									{isRunning ? "Running…" : "Run"}
+								</button>
+
+								<button
+									type="button"
+									onClick={() => onDelete(c.id)}
+									className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600"
+									title="Delete"
+									disabled={isRunning}
+								>
+									<Trash2 size={16} />
+								</button>
 							</div>
 						</div>
-						<div className="flex items-center gap-2">
-							<button
-								type="button"
-								onClick={() => onOpen(c.id)}
-								className="px-2 py-1 text-sm rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 inline-flex items-center gap-1"
-								title="Open"
-							>
-								<Eye size={14} /> Open
-							</button>
-							<button
-								type="button"
-								onClick={() => onDelete(c.id)}
-								className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600"
-								title="Delete"
-							>
-								<Trash2 size={16} />
-							</button>
-						</div>
-					</div>
-				))}
+					);
+				})}
 			</div>
 		</SectionCard>
 	);

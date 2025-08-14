@@ -21,3 +21,22 @@ export async function fetchDatasets(): Promise<DatasetInfo[]> {
 	if (!res.ok) return []; // graceful if not implemented yet
 	return (await res.json()) as DatasetInfo[];
 }
+
+export async function runExperiment(payload: {
+	id?: string;
+	name?: string;
+	config: ExperimentConfig;
+}) {
+	const res = await fetch(`${BASE}/experiments/run`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(payload),
+	});
+	if (!res.ok) {
+		const text = await res.text().catch(() => "");
+		throw new Error(
+			`Run request failed (${res.status}): ${text || res.statusText}`
+		);
+	}
+	return res.json() as Promise<{ status: string; message: string; echo: any }>;
+}
