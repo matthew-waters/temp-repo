@@ -444,63 +444,34 @@ export default function ConfigEditor({
 					</div>
 				</div>
 
-				{/* LLM Override (unchanged) */}
+				{/* Evaluator Model (LLM-as-a-judge) */}
 				<div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-4 mt-6">
-					<div className="text-sm font-medium mb-2">
-						Evaluation LLM Override
-					</div>
-					<label className="inline-flex items-center gap-2 text-sm">
-						<input
-							type="checkbox"
-							className="h-4 w-4"
-							checked={cfg.evaluation.llm_override.enabled}
+					<div className="text-sm font-medium mb-2">Evaluator Model</div>
+					<p className="text-xs text-zinc-500 mb-3">
+						Some metrics use an LLM as a judge (e.g., grading answers or
+						checking factuality). Select the model to be used for those
+						evaluations. If none of your chosen metrics use a model, you can
+						leave this blank.
+					</p>
+					<div className="md:w-[420px]">
+						<select
+							className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
+							value={cfg.evaluation.judge_llm.model || ""}
 							onChange={(e) =>
-								update(
-									["evaluation", "llm_override", "enabled"],
-									e.target.checked
-								)
+								update(["evaluation", "judge_llm", "model"], e.target.value)
 							}
-						/>
-						<span>Enabled</span>
-					</label>
-					<div className="grid md:grid-cols-4 gap-4 mt-3">
-						{(["llm_type", "model", "region", "temperature"] as const).map(
-							(k) => (
-								<div key={k} className="space-y-2">
-									<label className="text-sm font-medium capitalize">{k}</label>
-									{k === "temperature" ? (
-										<input
-											disabled={!cfg.evaluation.llm_override.enabled}
-											type="number"
-											step={0.1}
-											min={0}
-											max={2}
-											className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-											value={cfg.evaluation.llm_override.temperature}
-											onChange={(e) =>
-												update(
-													["evaluation", "llm_override", "temperature"],
-													Number(e.target.value)
-												)
-											}
-										/>
-									) : (
-										<input
-											disabled={!cfg.evaluation.llm_override.enabled}
-											className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm"
-											value={(cfg.evaluation.llm_override as any)[k]}
-											onChange={(e) =>
-												update(
-													["evaluation", "llm_override", k],
-													e.target.value
-												)
-											}
-											placeholder={k === "model" ? "provider model id" : ""}
-										/>
-									)}
-								</div>
-							)
-						)}
+						>
+							<option value="">
+								{llmModels.length
+									? "Select evaluator model…"
+									: "No models available"}
+							</option>
+							{llmModels.map((m) => (
+								<option key={m.id} value={m.id}>
+									{m.label}
+								</option>
+							))}
+						</select>
 					</div>
 				</div>
 			</SectionCard>

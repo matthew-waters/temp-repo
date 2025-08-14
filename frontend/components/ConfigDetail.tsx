@@ -1,4 +1,3 @@
-// src/components/ConfigDetail.tsx
 "use client";
 
 import React from "react";
@@ -19,8 +18,13 @@ export default function ConfigDetail({ item, onBack }: Props) {
 		config.data_ingestion.test_set.dataset_id ||
 		"";
 
+	const chunk = config.chunking;
+	const emb = config.qdrant_db.parameters.embedding;
+	const distance = config.qdrant_db.parameters.distance_metric;
+
 	return (
 		<div className="space-y-6">
+			{/* Header */}
 			<div className="flex items-center justify-between">
 				<h2 className="text-xl font-semibold">
 					Config: {item.name || "(unnamed experiment)"}
@@ -34,6 +38,7 @@ export default function ConfigDetail({ item, onBack }: Props) {
 				</button>
 			</div>
 
+			{/* Overview */}
 			<SectionCard title="Overview" icon={<span>🧪</span>}>
 				<div className="grid md:grid-cols-2 gap-4">
 					<div>
@@ -55,6 +60,7 @@ export default function ConfigDetail({ item, onBack }: Props) {
 				</div>
 			</SectionCard>
 
+			{/* Dataset */}
 			<SectionCard title="Dataset" icon={<span>🗃️</span>}>
 				<div className="text-sm">
 					<div className="text-xs text-zinc-500">Selected dataset</div>
@@ -65,31 +71,31 @@ export default function ConfigDetail({ item, onBack }: Props) {
 				</div>
 			</SectionCard>
 
+			{/* Chunking & Embedding */}
 			<SectionCard title="Chunking & Embedding" icon={<span>🧩</span>}>
 				<div className="grid md:grid-cols-2 gap-4">
 					<div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4">
 						<div className="text-xs text-zinc-500">Chunking</div>
 						<div className="text-sm mt-1">
-							{config.chunking.chunking_type || "—"} • size{" "}
-							{config.chunking.parameters.chunk_size}, overlap{" "}
-							{config.chunking.parameters.chunk_overlap}
+							{chunk.chunking_type || "—"} • size {chunk.parameters.chunk_size},
+							overlap {chunk.parameters.chunk_overlap}
 						</div>
 					</div>
 					<div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4">
 						<div className="text-xs text-zinc-500">Embedding</div>
 						<div className="text-sm mt-1">
-							model id:{" "}
-							{config.qdrant_db.parameters.embedding.embedding_model || "—"}
+							model id: {emb.embedding_model || "—"}
 							{", dim "}
-							{config.qdrant_db.parameters.embedding.embedding_length || "—"}
+							{emb.embedding_length || "—"}
 							{" • "}
-							{config.qdrant_db.parameters.distance_metric || "—"}
+							{distance || "—"}
 						</div>
 					</div>
 				</div>
 			</SectionCard>
 
-			<SectionCard title="Evaluation Metrics" icon={<span>📊</span>}>
+			{/* Evaluation */}
+			<SectionCard title="Evaluation" icon={<span>📊</span>}>
 				<div className="grid md:grid-cols-4 gap-4">
 					{(
 						[
@@ -110,8 +116,18 @@ export default function ConfigDetail({ item, onBack }: Props) {
 						</div>
 					))}
 				</div>
+
+				<div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4 mt-4">
+					<div className="text-xs text-zinc-500">
+						Evaluator Model (LLM-as-a-judge)
+					</div>
+					<div className="text-sm mt-1">
+						{config.evaluation.judge_llm?.model || "—"}
+					</div>
+				</div>
 			</SectionCard>
 
+			{/* Agents snapshot */}
 			<SectionCard title="Agents (snapshot)" icon={<span>🧠</span>}>
 				<div className="grid md:grid-cols-2 gap-4">
 					{config.agents.map((a) => (
@@ -123,9 +139,9 @@ export default function ConfigDetail({ item, onBack }: Props) {
 								{a.name} <span className="text-xs text-zinc-500">({a.id})</span>
 							</div>
 							<div className="text-xs text-zinc-500 mt-1">
-								{a.agent_type} • {a.retriever.retriever_type} (k=
-								{a.retriever.top_k}) • {a.llm.llm_type}/{a.llm.model} • T=
-								{a.llm.temperature}
+								{a.agent_type} • {a.retriever.retriever_type || "—"} (k=
+								{a.retriever.top_k}){" • "}
+								model={a.llm?.model || "—"}
 							</div>
 						</div>
 					))}
