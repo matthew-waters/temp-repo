@@ -2,16 +2,78 @@
 
 import React from "react";
 import SectionCard from "./SectionCard";
-import type { SavedConfig } from "../lib/types";
+import type { SavedConfig, Option, MetricGroups } from "../lib/types";
 
 type Props = {
 	item: SavedConfig;
 	onBack: () => void;
+
+	// Lookup options from catalog so we can render labels (not ids)
+	datasetOptions: Option[];
+	agentTypes: Option[];
+	retrieverTypes: Option[];
+	llmModels: Option[]; // provider model id -> label
+	embeddingModels: Option[]; // provider model id -> label
+	chunkingStrategies: Option[];
+	evaluationMetricGroups: MetricGroups; // includes descriptions
 };
 
-export default function ConfigDetail({ item, onBack }: Props) {
+const toLabelMap = (opts: Option[]) =>
+	Object.fromEntries(opts.map((o) => [o.id, o.label]));
+
+export default function ConfigDetail({
+	item,
+	onBack,
+	datasetOptions,
+	agentTypes,
+	retrieverTypes,
+	llmModels,
+	embeddingModels,
+	chunkingStrategies,
+	evaluationMetricGroups,
+}: Props) {
 	const { config } = item;
-	const metrics = config.evaluation.metrics;
+
+	// Build lookup maps
+	const datasetLabel = toLabelMap(datasetOptions);
+	const agentTypeLabel = toLabelMap(agentTypes);
+	const retrieverTypeLabel = toLabelMap(retrieverTypes);
+	const llmModelLabel = toLabelMap(llmModels);
+	const embeddingModelLabel = toLabelMap(embeddingModels);
+	const chunkingLabel = toLabelMap(chunkingStrategies);
+
+	// Metric maps: id -> {label, description}
+	const metricMap = {
+		retrieval: Object.fromEntries(
+			evaluationMetricGroups.retrieval.map((m) => [
+				m.id,
+				{ label: m.label, description: m.description },
+			])
+		),
+		agent: Object.fromEntries(
+			evaluationMetricGroups.agent.map((m) => [
+				m.id,
+				{ label: m.label, description: m.description },
+			])
+		),
+		generation: Object.fromEntries(
+			evaluationMetricGroups.generation.map((m) => [
+				m.id,
+				{ label: m.label, description: m.description },
+			])
+		),
+		aggregate: Object.fromEntries(
+			evaluationMetricGroups.aggregate.map((m) => [
+				m.id,
+				{ label: m.label, description: m.description },
+			])
+		),
+	} as const;
+
+	const labelOf = (
+		id: string | undefined | null,
+		map: Record<string, string>
+	) => (id && map[id]) || id || "—";
 
 	const datasetId =
 		config.data_ingestion.ingestion_corpus.dataset_id ||
@@ -21,12 +83,39 @@ export default function ConfigDetail({ item, onBack }: Props) {
 	const chunk = config.chunking;
 	const emb = config.qdrant_db.parameters.embedding;
 
+	const MetricList: React.FC<{
+		ids: string[];
+		category: keyof typeof metricMap;
+	}> = ({ ids, category }) => {
+		if (!ids?.length) return <div className="text-sm text-zinc-500">—</div>;
+		const mm = metricMap[category];
+		return (
+			<div className="space-y-2">
+				{ids.map((id) => {
+					const info = mm[id];
+					const label = info?.label || id;
+					const desc = info?.description;
+					return (
+						<div
+							key={id}
+							className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3"
+							title={desc || ""}
+						>
+							<div className="text-sm font-medium">{label}</div>
+							{desc && <div className="text-xs text-zinc-500 mt-1">{desc}</div>}
+						</div>
+					);
+				})}
+			</div>
+		);
+	};
+
 	return (
 		<div className="space-y-6">
 			{/* Header */}
 			<div className="flex items-center justify-between">
 				<h2 className="text-xl font-semibold">
-					Config: {item.name || "(unnamed experiment)"}
+					Config: {config.name || "(unnamed experiment)"}
 				</h2>
 				<button
 					onClick={onBack}
@@ -37,18 +126,12 @@ export default function ConfigDetail({ item, onBack }: Props) {
 				</button>
 			</div>
 
-			{/* Overview */}
+			{/* Overview (labels only, no agent list here) */}
 			<SectionCard title="Overview" icon={<span>🧪</span>}>
 				<div className="grid md:grid-cols-2 gap-4">
 					<div>
 						<div className="text-xs text-zinc-500">Experiment Name</div>
 						<div className="font-medium">{config.name || "—"}</div>
-					</div>
-					<div>
-						<div className="text-xs text-zinc-500">Agents (by id)</div>
-						<div className="font-medium">
-							{config.agents.map((a) => a.id).join(", ") || "—"}
-						</div>
 					</div>
 					{config.description && (
 						<div className="md:col-span-2">
@@ -63,88 +146,138 @@ export default function ConfigDetail({ item, onBack }: Props) {
 			<SectionCard title="Dataset" icon={<span>🗃️</span>}>
 				<div className="text-sm">
 					<div className="text-xs text-zinc-500">Selected dataset</div>
-					<div className="font-medium mt-1">{datasetId || "—"}</div>
+					<div className="font-medium mt-1">
+						{labelOf(datasetId, datasetLabel)}
+					</div>
 					<div className="text-xs text-zinc-500 mt-2">
 						Paths are resolved on the backend during run time.
 					</div>
 				</div>
 			</SectionCard>
 
-			{/* Chunking & Embedding */}
-			<SectionCard title="Chunking & Embedding" icon={<span>🧩</span>}>
-				<div className="grid md:grid-cols-2 gap-4">
-					<div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4">
-						<div className="text-xs text-zinc-500">Chunking</div>
-						<div className="text-sm mt-1">
-							{chunk.chunking_type || "—"} • size {chunk.parameters.chunk_size},
-							overlap {chunk.parameters.chunk_overlap}
+			{/* Chunking (separate card) */}
+			<SectionCard title="Chunking" icon={<span>🧩</span>}>
+				<div className="grid md:grid-cols-3 gap-4">
+					<div>
+						<div className="text-xs text-zinc-500">Chunking Strategy</div>
+						<div className="text-sm font-medium mt-1">
+							{labelOf(chunk.chunking_type, chunkingLabel)}
 						</div>
 					</div>
-					<div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4">
-						<div className="text-xs text-zinc-500">Embedding</div>
-						<div className="text-sm mt-1">
-							model id: {emb.embedding_model || "—"}
-							{", dim "}
+					<div>
+						<div className="text-xs text-zinc-500">Chunk Size</div>
+						<div className="text-sm font-medium mt-1">
+							{chunk.parameters.chunk_size}
+						</div>
+					</div>
+					<div>
+						<div className="text-xs text-zinc-500">Chunk Overlap</div>
+						<div className="text-sm font-medium mt-1">
+							{chunk.parameters.chunk_overlap}
+						</div>
+					</div>
+				</div>
+			</SectionCard>
+
+			{/* Embedding (separate card) */}
+			<SectionCard title="Embedding" icon={<span>🧠</span>}>
+				<div className="grid md:grid-cols-2 gap-4">
+					<div>
+						<div className="text-xs text-zinc-500">Embedding Model</div>
+						<div className="text-sm font-medium mt-1">
+							{labelOf(emb.embedding_model, embeddingModelLabel)}
+						</div>
+					</div>
+					<div>
+						<div className="text-xs text-zinc-500">Dimensionality</div>
+						<div className="text-sm font-medium mt-1">
 							{emb.embedding_length || "—"}
 						</div>
 					</div>
 				</div>
 			</SectionCard>
 
-			{/* Evaluation */}
+			{/* Evaluation (labels + descriptions) */}
 			<SectionCard title="Evaluation" icon={<span>📊</span>}>
-				<div className="grid md:grid-cols-4 gap-4">
-					{(
-						[
-							["Agent", metrics.agent],
-							["Retrieval", metrics.retrieval],
-							["Generation", metrics.generation],
-							["Aggregate", metrics.aggregate],
-						] as const
-					).map(([label, arr]) => (
-						<div
-							key={label}
-							className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4"
-						>
-							<div className="text-xs text-zinc-500">{label}</div>
-							<div className="text-sm mt-1 break-words">
-								{(arr as string[]).join(", ") || "—"}
-							</div>
-						</div>
-					))}
+				<div className="grid md:grid-cols-2 gap-6">
+					<div>
+						<div className="text-sm font-medium mb-2">Retrieval Metrics</div>
+						<MetricList
+							ids={config.evaluation.metrics.retrieval}
+							category="retrieval"
+						/>
+					</div>
+
+					<div>
+						<div className="text-sm font-medium mb-2">Agent Metrics</div>
+						<MetricList
+							ids={config.evaluation.metrics.agent}
+							category="agent"
+						/>
+					</div>
+
+					<div>
+						<div className="text-sm font-medium mb-2">Generation Metrics</div>
+						<MetricList
+							ids={config.evaluation.metrics.generation}
+							category="generation"
+						/>
+					</div>
+
+					<div>
+						<div className="text-sm font-medium mb-2">Aggregate Metrics</div>
+						<MetricList
+							ids={config.evaluation.metrics.aggregate}
+							category="aggregate"
+						/>
+					</div>
 				</div>
 
-				<div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4 mt-4">
+				{/* Evaluator model (label) */}
+				<div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4 mt-6">
 					<div className="text-xs text-zinc-500">
 						Evaluator Model (LLM-as-a-judge)
 					</div>
 					<div className="text-sm mt-1">
-						{config.evaluation.judge_llm?.model || "—"}
+						{labelOf(config.evaluation.judge_llm?.model, llmModelLabel)}
 					</div>
 				</div>
 			</SectionCard>
 
-			{/* Agents snapshot */}
-			<SectionCard title="Agents (snapshot)" icon={<span>🧠</span>}>
+			{/* Agents — each with its own options */}
+			<SectionCard title="Agents" icon={<span>🧠</span>}>
 				<div className="grid md:grid-cols-2 gap-4">
+					{config.agents.length === 0 && (
+						<div className="text-sm text-zinc-500">No agents selected.</div>
+					)}
 					{config.agents.map((a) => (
 						<div
 							key={a.id}
 							className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-4"
 						>
 							<div className="font-medium">
-								{a.name} <span className="text-xs text-zinc-500">({a.id})</span>
+								{labelOf(a.agent_type, agentTypeLabel)}{" "}
+								<span className="text-xs text-zinc-500">({a.id})</span>
 							</div>
-							<div className="text-xs text-zinc-500 mt-1">
-								{a.agent_type} • {a.retriever.retriever_type || "—"} (k=
-								{a.retriever.top_k}){" • "}
-								model={a.llm?.model || "—"}
+							<div className="mt-2 grid grid-cols-1 gap-2 text-sm">
+								<div>
+									<div className="text-xs text-zinc-500">Retriever</div>
+									<div className="font-medium mt-0.5">
+										{labelOf(a.retriever.retriever_type, retrieverTypeLabel)}{" "}
+										<span className="text-xs text-zinc-500">
+											(k={a.retriever.top_k})
+										</span>
+									</div>
+								</div>
+								<div>
+									<div className="text-xs text-zinc-500">Model</div>
+									<div className="font-medium mt-0.5">
+										{labelOf(a.llm?.model, llmModelLabel)}
+									</div>
+								</div>
 							</div>
 						</div>
 					))}
-					{config.agents.length === 0 && (
-						<div className="text-sm text-zinc-500">No agents captured.</div>
-					)}
 				</div>
 			</SectionCard>
 		</div>
