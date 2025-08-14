@@ -110,6 +110,74 @@ export default function ConfigEditor({
 		);
 	};
 
+	// Reusable checkbox list for metric options
+	const MetricCheckboxes: React.FC<{
+		options: Option[];
+		value: string[]; // selected metric ids
+		onChange: (next: string[]) => void;
+	}> = ({ options, value, onChange }) => {
+		const toggle = (id: string) => {
+			const set = new Set(value);
+			set.has(id) ? set.delete(id) : set.add(id);
+			onChange(Array.from(set));
+		};
+
+		const allIds = options.map((o) => o.id);
+		const isAllSelected = value.length && value.length === allIds.length;
+
+		return (
+			<div className="space-y-3">
+				<div className="flex items-center gap-2">
+					<button
+						type="button"
+						onClick={() => onChange(allIds)}
+						className="text-xs px-2 py-1 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+						disabled={!options.length}
+					>
+						Select all
+					</button>
+					<button
+						type="button"
+						onClick={() => onChange([])}
+						className="text-xs px-2 py-1 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+						disabled={!value.length}
+					>
+						Clear
+					</button>
+					{isAllSelected && (
+						<span className="text-xs text-zinc-500">All selected</span>
+					)}
+				</div>
+
+				<div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-auto pr-1">
+					{options.map((opt) => {
+						const checked = value.includes(opt.id);
+						return (
+							<label
+								key={opt.id}
+								className={`flex items-center gap-2 text-sm rounded-lg px-3 py-2 border ${
+									checked
+										? "border-zinc-400 bg-zinc-50 dark:bg-zinc-900"
+										: "border-zinc-200 dark:border-zinc-800"
+								}`}
+							>
+								<input
+									type="checkbox"
+									checked={checked}
+									onChange={() => toggle(opt.id)}
+								/>
+								<span className="truncate">{opt.label}</span>
+							</label>
+						);
+					})}
+					{!options.length && (
+						<div className="text-xs text-zinc-500">No metrics available</div>
+					)}
+				</div>
+			</div>
+		);
+	};
+
 	return (
 		<div className="space-y-6">
 			{/* Header */}
@@ -324,58 +392,54 @@ export default function ConfigEditor({
 				llmModels={llmModels}
 			/>
 
-			{/* Evaluation — grouped pickers */}
+			{/* Evaluation — grouped checkbox pickers */}
 			<SectionCard title="Evaluation" icon={<span>📊</span>}>
 				<div className="grid md:grid-cols-2 gap-6">
 					{/* Retrieval */}
 					<div>
 						<div className="text-sm font-medium mb-2">Retrieval Metrics</div>
-						<MultiSelect
+						<MetricCheckboxes
 							value={cfg.evaluation.metrics.retrieval}
 							options={evaluationMetricGroups.retrieval}
 							onChange={(next) =>
 								update(["evaluation", "metrics", "retrieval"], next)
 							}
-							size={Math.min(8, evaluationMetricGroups.retrieval.length)}
 						/>
 					</div>
 
 					{/* Agent */}
 					<div>
 						<div className="text-sm font-medium mb-2">Agent Metrics</div>
-						<MultiSelect
+						<MetricCheckboxes
 							value={cfg.evaluation.metrics.agent}
 							options={evaluationMetricGroups.agent}
 							onChange={(next) =>
 								update(["evaluation", "metrics", "agent"], next)
 							}
-							size={Math.min(8, evaluationMetricGroups.agent.length)}
 						/>
 					</div>
 
 					{/* Generation */}
 					<div>
 						<div className="text-sm font-medium mb-2">Generation Metrics</div>
-						<MultiSelect
+						<MetricCheckboxes
 							value={cfg.evaluation.metrics.generation}
 							options={evaluationMetricGroups.generation}
 							onChange={(next) =>
 								update(["evaluation", "metrics", "generation"], next)
 							}
-							size={Math.min(8, evaluationMetricGroups.generation.length)}
 						/>
 					</div>
 
 					{/* Aggregate */}
 					<div>
 						<div className="text-sm font-medium mb-2">Aggregate Metrics</div>
-						<MultiSelect
+						<MetricCheckboxes
 							value={cfg.evaluation.metrics.aggregate}
 							options={evaluationMetricGroups.aggregate}
 							onChange={(next) =>
 								update(["evaluation", "metrics", "aggregate"], next)
 							}
-							size={Math.min(8, evaluationMetricGroups.aggregate.length)}
 						/>
 					</div>
 				</div>
