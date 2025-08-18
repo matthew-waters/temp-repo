@@ -25,20 +25,32 @@ export function getConfig(id: string): SavedConfig | undefined {
 	return readAll().find((c) => c.id === id);
 }
 
-export function saveNew(
-	item: Omit<SavedConfig, "id" | "createdAt" | "updatedAt">
-): SavedConfig {
+export function saveNew({
+	name,
+	config,
+}: {
+	name: string;
+	config: ExperimentConfig;
+}): SavedConfig {
+	const all = listConfigs();
+	const normalized = (s: string) => s.trim().toLowerCase();
+
+	if (all.some((c) => normalized(c.name) === normalized(name))) {
+		throw new Error(
+			`An experiment named "${name}" already exists. Names must be unique.`
+		);
+	}
+
 	const now = new Date().toISOString();
-	const newItem: SavedConfig = {
-		...item,
+	const item: SavedConfig = {
 		id: crypto.randomUUID(),
+		name,
+		config,
 		createdAt: now,
 		updatedAt: now,
 	};
-	const all = readAll();
-	all.push(newItem);
-	writeAll(all);
-	return newItem;
+	// ...persist `item` to local storage and return it...
+	return item;
 }
 
 export function updateConfig(

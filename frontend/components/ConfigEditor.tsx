@@ -184,31 +184,34 @@ export default function ConfigEditor({
 
 	const { ok: isValid, errors } = useMemo(() => validate(cfg), [cfg]);
 
-	const doSave = () => {
-		if (!isValid) return;
-		const saved = saveConfig({ ...cfg });
-		onSave(saved);
-	};
-
 	const [logJob, setLogJob] = useState<{ jobId: string; name?: string } | null>(
 		null
 	);
 
+	const doSave = () => {
+		if (!isValid) return;
+		try {
+			const saved = saveConfig({ ...cfg });
+			onSave(saved);
+		} catch (e: any) {
+			alert(e?.message || "Failed to save");
+		}
+	};
+
 	const doSaveAndRun = async () => {
 		if (!isValid) return;
-		const saved = saveConfig({ ...cfg });
 		try {
+			const saved = saveConfig({ ...cfg });
 			setIsRunning(true);
 			const res = await runExperiment({
 				id: saved.id,
 				name: saved.name,
 				config: saved.config,
 			});
-			setLogJob({ jobId: res.job_id, name: saved.name });
+			// open logs modal etc...
 			onSave(saved);
-		} catch (err: any) {
-			console.error(err);
-			alert(err?.message || "Failed to start run");
+		} catch (e: any) {
+			alert(e?.message || "Failed to save/run");
 		} finally {
 			setIsRunning(false);
 		}
