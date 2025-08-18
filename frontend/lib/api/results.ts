@@ -21,7 +21,10 @@ export async function fetchResultsGrouped(): Promise<ResultGroup[]> {
 	return res.json();
 }
 
-export function reportDownloadUrl(resultId: string) {
-	// you can wire this to a direct download endpoint if you switch to FileResponse
-	return `${BASE}/results/${encodeURIComponent(resultId)}/report`;
+export async function fetchResultById(id: string) {
+	const res = await fetch(`${BASE}/results/${encodeURIComponent(id)}`, {
+		cache: "no-store",
+	});
+	if (!res.ok) throw new Error(`Failed to load result (${res.status})`);
+	return res.json(); // full report.json
 }

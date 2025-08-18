@@ -171,13 +171,26 @@ export default function ResultsGroupedList({ onOpenRun }: Props) {
 													</div>
 												</div>
 												<div className="flex items-center gap-2 shrink-0">
-													<a
-														href={reportDownloadUrl(r.experiment_id)}
-														className="px-2 py-1 text-sm rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 inline-flex items-center gap-1"
-														title="Download report.json"
-													>
-														<Download size={14} /> Report
-													</a>
+													<div className="flex items-center gap-2 shrink-0">
+														<a
+															href={reportDownloadUrl(r.experiment_id)}
+															className="px-2 py-1 text-sm rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 inline-flex items-center gap-1"
+															title="Download report.json"
+														>
+															<Download size={14} /> Report
+														</a>
+
+														{onOpenRun && (
+															<button
+																type="button"
+																onClick={() => onOpenRun(r.experiment_id)}
+																className="px-2 py-1 text-sm rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800 inline-flex items-center gap-1"
+																title="View results"
+															>
+																<Eye size={14} /> View Results
+															</button>
+														)}
+													</div>
 													{onOpenRun && (
 														<button
 															type="button"
