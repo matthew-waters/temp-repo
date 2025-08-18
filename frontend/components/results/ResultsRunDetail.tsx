@@ -1,13 +1,25 @@
-// src/components/ResultsRunDetail.tsx
 "use client";
 
 import React from "react";
-import SectionCard from "./SectionCard";
-import { fetchResultById, reportDownloadUrl } from "../lib/api";
-import type { Report } from "../lib/types/results";
-import type { IngestionDataset, TestSetData } from "../lib/types/dataset";
+import SectionCard from "../SectionCard";
+import Modal from "../ui/Modal";
 import { Download } from "lucide-react";
-import { fetchDatasetCorpus, fetchDatasetTestSet } from "../lib/api";
+
+import {
+	fetchResultById,
+	reportDownloadUrl,
+	fetchDatasetCorpus,
+	fetchDatasetTestSet,
+} from "../../lib/api";
+import type { Report } from "../../lib/types/results";
+import type {
+	IngestionDataset,
+	TestSetData,
+	IngestionDocument,
+} from "../../lib/types/dataset";
+
+import CorpusTable from "./dataset/CorpusTable";
+import TestSetTable from "./dataset/TestSetTable";
 
 type Props = {
 	runId: string;
@@ -19,17 +31,17 @@ export default function ResultsRunDetail({ runId, onBack }: Props) {
 	const [loading, setLoading] = React.useState(true);
 	const [error, setError] = React.useState<string | null>(null);
 
-	// Top-level results tabs (we’ll add more later; for now only "dataset")
 	const [tab, setTab] = React.useState<"dataset">("dataset");
-
-	// Dataset sub-tabs
 	const [dsTab, setDsTab] = React.useState<"corpus" | "test">("corpus");
 
-	// Dataset data
 	const [corpus, setCorpus] = React.useState<IngestionDataset | null>(null);
 	const [testSet, setTestSet] = React.useState<TestSetData | null>(null);
 	const [dsError, setDsError] = React.useState<string | null>(null);
 	const [dsLoading, setDsLoading] = React.useState(false);
+
+	// Modal state for corpus doc details
+	const [selectedDoc, setSelectedDoc] =
+		React.useState<IngestionDocument | null>(null);
 
 	React.useEffect(() => {
 		let mounted = true;
@@ -52,7 +64,6 @@ export default function ResultsRunDetail({ runId, onBack }: Props) {
 		};
 	}, [runId]);
 
-	// Load dataset content when we have report + we are on the dataset tab
 	React.useEffect(() => {
 		let mounted = true;
 		const loadDataset = async (datasetId: string) => {
@@ -88,7 +99,6 @@ export default function ResultsRunDetail({ runId, onBack }: Props) {
 			</SectionCard>
 		);
 	}
-
 	if (error || !report) {
 		return (
 			<SectionCard title="Run Details" icon={<span>📄</span>}>
@@ -226,14 +236,16 @@ export default function ResultsRunDetail({ runId, onBack }: Props) {
 								</SubTabBtn>
 							</div>
 
-							{/* Content */}
 							{dsLoading && (
 								<div className="text-sm text-zinc-500">Loading dataset…</div>
 							)}
 							{dsError && <div className="text-sm text-red-600">{dsError}</div>}
 
 							{!dsLoading && !dsError && dsTab === "corpus" && (
-								<CorpusTable corpus={corpus} />
+								<CorpusTable
+									corpus={corpus}
+									onSelectDoc={(doc) => setSelectedDoc(doc)}
+								/>
 							)}
 
 							{!dsLoading && !dsError && dsTab === "test" && (
@@ -243,9 +255,26 @@ export default function ResultsRunDetail({ runId, onBack }: Props) {
 					)}
 				</div>
 			</div>
+
+			{/* Document detail modal */}
+			<Modal
+				open={!!selectedDoc}
+				onClose={() => setSelectedDoc(null)}
+				title={
+					<div className="truncate">
+						{extractTitle(selectedDoc) || (
+							<span className="text-zinc-500">Untitled document</span>
+						)}
+					</div>
+				}
+			>
+				{selectedDoc && <DocDetail doc={selectedDoc} />}
+			</Modal>
 		</div>
 	);
 }
+
+/* ---------- helpers & subcomponents ---------- */
 
 function TabBtn({
 	active,
@@ -295,165 +324,108 @@ function SubTabBtn({
 	);
 }
 
-/* ---------------- Corpus table ---------------- */
-function CorpusTable({ corpus }: { corpus: IngestionDataset | null }) {
-	const [limit, setLimit] = React.useState(50);
-	if (!corpus)
-		return <div className="text-sm text-zinc-500">No corpus loaded.</div>;
+function DocDetail({ doc }: { doc: IngestionDocument }) {
+	const meta = doc.metadata || {};
+	const title = extractTitle(doc);
+	const author =
+		meta.author || meta.author_name || meta.by || meta.creator || null;
+	const source =
+		meta.source || meta.source_site || meta.publisher || meta.outlet || null;
+	const published = meta.published_at || meta.date || meta.published || null;
+	const url = meta.url || meta.source_url || meta.link || null;
 
-	const rows = corpus.data.slice(0, limit);
 	return (
-		<div className="space-y-3">
-			<div className="text-sm text-zinc-500">
-				Documents:{" "}
-				<span className="font-medium text-zinc-700 dark:text-zinc-300">
-					{corpus.data.length}
-				</span>{" "}
-				• Collections:{" "}
-				<span className="font-medium">{corpus.collections.length}</span>
-			</div>
-
-			<div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
-				<table className="w-full text-sm">
-					<thead className="bg-zinc-50 dark:bg-zinc-900 text-xs text-zinc-500">
-						<tr>
-							<th className="text-left px-3 py-2">Doc ID</th>
-							<th className="text-left px-3 py-2">Collection</th>
-							<th className="text-left px-3 py-2">Content (preview)</th>
-							<th className="text-left px-3 py-2">Metadata keys</th>
-						</tr>
-					</thead>
-					<tbody>
-						{rows.map((d, i) => (
-							<tr
-								key={`${d.doc_id}-${i}`}
-								className="border-t border-zinc-200 dark:border-zinc-800 align-top"
-							>
-								<td className="px-3 py-2 font-mono text-xs">{d.doc_id}</td>
-								<td className="px-3 py-2">{d.collection}</td>
-								<td
-									className="px-3 py-2 max-w-[520px] truncate"
-									title={d.content}
-								>
-									{truncate(d.content, 180)}
-								</td>
-								<td className="px-3 py-2 text-xs">
-									{Object.keys(d.metadata || {})
-										.slice(0, 6)
-										.join(", ")}
-								</td>
-							</tr>
-						))}
-						{rows.length === 0 && (
-							<tr>
-								<td colSpan={4} className="px-3 py-3 text-sm text-zinc-500">
-									No documents.
-								</td>
-							</tr>
-						)}
-					</tbody>
-				</table>
-			</div>
-
-			{limit < corpus.data.length && (
+		<div className="space-y-4 text-sm">
+			<div className="grid md:grid-cols-2 gap-4">
 				<div>
-					<button
-						type="button"
-						onClick={() =>
-							setLimit((n) => Math.min(n + 50, corpus.data.length))
-						}
-						className="px-3 py-1.5 text-sm rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-					>
-						Show more
-					</button>
+					<div className="text-zinc-500">Title</div>
+					<div>
+						{title || <span className="text-zinc-500 italic">Unknown</span>}
+					</div>
+				</div>
+				<div>
+					<div className="text-zinc-500">Collection</div>
+					<div>
+						{doc.collection || (
+							<span className="text-zinc-500 italic">Unknown</span>
+						)}
+					</div>
+				</div>
+				<div>
+					<div className="text-zinc-500">Author</div>
+					<div>
+						{author || <span className="text-zinc-500 italic">Unknown</span>}
+					</div>
+				</div>
+				<div>
+					<div className="text-zinc-500">Source</div>
+					<div>
+						{source || <span className="text-zinc-500 italic">Unknown</span>}
+					</div>
+				</div>
+				<div>
+					<div className="text-zinc-500">Published at</div>
+					<div>
+						{published ? (
+							new Date(published).toLocaleString()
+						) : (
+							<span className="text-zinc-500 italic">Unknown</span>
+						)}
+					</div>
+				</div>
+				<div>
+					<div className="text-zinc-500">URL</div>
+					<div>
+						{url ? (
+							<a
+								href={url}
+								target="_blank"
+								rel="noreferrer"
+								className="text-blue-600 hover:underline break-all"
+							>
+								{url}
+							</a>
+						) : (
+							<span className="text-zinc-500 italic">Unknown</span>
+						)}
+					</div>
+				</div>
+				<div>
+					<div className="text-zinc-500">Doc ID</div>
+					<div className="font-mono">{doc.doc_id}</div>
+				</div>
+			</div>
+
+			<div>
+				<div className="text-zinc-500 mb-1">Full content</div>
+				<div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3 whitespace-pre-wrap">
+					{doc.content || (
+						<span className="text-zinc-500 italic">No content</span>
+					)}
+				</div>
+			</div>
+
+			{Object.keys(doc.metadata || {}).length > 0 && (
+				<div>
+					<div className="text-zinc-500 mb-1">Raw metadata</div>
+					<pre className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3 text-xs overflow-auto">
+						{JSON.stringify(doc.metadata, null, 2)}
+					</pre>
 				</div>
 			)}
 		</div>
 	);
 }
 
-/* ---------------- Test set table ---------------- */
-function TestSetTable({ testSet }: { testSet: TestSetData | null }) {
-	const [limit, setLimit] = React.useState(50);
-	if (!testSet)
-		return <div className="text-sm text-zinc-500">No test set loaded.</div>;
-
-	const rows = testSet.data.slice(0, limit);
-
+function extractTitle(doc?: IngestionDocument | null): string | null {
+	if (!doc) return null;
+	const m = doc.metadata || {};
 	return (
-		<div className="space-y-3">
-			<div className="text-sm text-zinc-500">
-				Queries:{" "}
-				<span className="font-medium text-zinc-700 dark:text-zinc-300">
-					{testSet.data.length}
-				</span>
-			</div>
-
-			<div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
-				<table className="w-full text-sm">
-					<thead className="bg-zinc-50 dark:bg-zinc-900 text-xs text-zinc-500">
-						<tr>
-							<th className="text-left px-3 py-2">Query ID</th>
-							<th className="text-left px-3 py-2">Query</th>
-							<th className="text-left px-3 py-2">Ground Truth</th>
-							<th className="text-left px-3 py-2">Evidence #</th>
-						</tr>
-					</thead>
-					<tbody>
-						{rows.map((q) => (
-							<tr
-								key={q.query_id}
-								className="border-t border-zinc-200 dark:border-zinc-800 align-top"
-							>
-								<td className="px-3 py-2 font-mono text-xs">{q.query_id}</td>
-								<td
-									className="px-3 py-2 max-w-[420px] truncate"
-									title={q.query}
-								>
-									{truncate(q.query, 160)}
-								</td>
-								<td
-									className="px-3 py-2 max-w-[420px] truncate"
-									title={q.ground_truth_answer?.query_answer}
-								>
-									{truncate(q.ground_truth_answer?.query_answer || "", 160)}
-								</td>
-								<td className="px-3 py-2 text-xs">
-									{q.ground_truth_answer?.supporting_evidence?.length ?? 0}
-								</td>
-							</tr>
-						))}
-						{rows.length === 0 && (
-							<tr>
-								<td colSpan={4} className="px-3 py-3 text-sm text-zinc-500">
-									No test queries.
-								</td>
-							</tr>
-						)}
-					</tbody>
-				</table>
-			</div>
-
-			{limit < testSet.data.length && (
-				<div>
-					<button
-						type="button"
-						onClick={() =>
-							setLimit((n) => Math.min(n + 50, testSet.data.length))
-						}
-						className="px-3 py-1.5 text-sm rounded-lg border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-					>
-						Show more
-					</button>
-				</div>
-			)}
-		</div>
+		(m.title as string) ||
+		(m.headline as string) ||
+		(m.document_title as string) ||
+		null
 	);
-}
-
-function truncate(s: string, n: number) {
-	if (!s) return "";
-	return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }
 
 function formatDuration(seconds: number) {
