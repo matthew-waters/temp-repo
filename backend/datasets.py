@@ -1,36 +1,74 @@
-from typing import List
+# app/routers/datasets_content.py
+from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from typing import Any, Dict, List, Optional
+from pathlib import Path
+import json
 
-from app.registries.dataset_registry import DatasetRegistry
+from app.routers.dataset_registry import DatasetRegistry  # adjust import path to your project
 
-router = APIRouter(prefix="/catalog", tags=["catalog"])
+router = APIRouter(prefix="/datasets", tags=["datasets"])
 
+# --- Models (align with your earlier Python definitions) ---
 
-class Option(BaseModel):
-    id: str
-    label: str
+class Evidence(BaseModel):
+    doc_id: int
+    collection: str
+    fact_excerpt: str
+    other: Optional[Dict[str, Any]] = None
 
+class GroundTruthAnswer(BaseModel):
+    query_answer: str
+    supporting_evidence: List[Evidence]
 
-@router.get("/datasets", response_model=List[Option])
-def get_dataset_options():
-    """
-    Return only dataset ids + labels for the UI dropdown.
-    The frontend will save dataset_id in the experiment config.
-    Paths are resolved server-side later (no need to send JSON or paths to UI).
-    """
-    return [Option(id=i, label=i) for i in DatasetRegistry.list_ids()]
+class TestQuery(BaseModel):
+    query_id: str
+    query: str
+    ground_truth_answer: GroundTruthAnswer
+    other: Optional[Dict[str, Any]] = None
 
+class TestSetData(BaseModel):
+    data: List[TestQuery]
 
-# (Optional) If your runner wants to resolve ids -> paths via API (not needed by the UI):
-class ResolveResp(BaseModel):
-    corpus_path: str
-    test_set_path: str
+class IngestionDocument(BaseModel):
+    content: str
+    collection: str
+    doc_id: str
+    metadata: Dict[str, Any]
 
-@router.get("/datasets/resolve", response_model=ResolveResp)
-def resolve_dataset(dataset_id: str):
+class IngestionCollection(BaseModel):
+    collection_name: str
+    collection_description: str
+
+class IngestionDataset(BaseModel):
+    data: List[IngestionDocument]
+    collections: List[IngestionCollection]
+
+def _read_json(path: Path):
+    with path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+@router.get("/{dataset_id}/corpus", response_model=IngestionDataset)
+def get_corpus(dataset_id: str):
     try:
         paths = DatasetRegistry.resolve(dataset_id)
-        return ResolveResp(corpus_path=paths.corpus_path, test_set_path=paths.test_set_path)
-    except KeyError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown dataset_id")
+    p = Path(paths.corpus_path)
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="corpus.json not found")
+    data = _read_json(p)
+    return data
+
+@router.get("/{dataset_id}/test_set", response_model=TestSetData)
+def get_test_set(dataset_id: str):
+    try:
+        paths = DatasetRegistry.resolve(dataset_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown dataset_id")
+    p = Path(paths.test_set_path)
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="test_set.json not found")
+    data = _read_json(p)
+    return data
