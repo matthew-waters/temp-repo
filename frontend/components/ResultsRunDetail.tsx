@@ -4,30 +4,20 @@
 import React from "react";
 import SectionCard from "./SectionCard";
 import { fetchResultById } from "../lib/api";
+import type { Report } from "../lib/types/results";
 
 type Props = {
 	runId: string;
 	onBack: () => void;
 };
 
-type Report = {
-	experiment: {
-		experiment_id: string;
-		name: string;
-		description?: string | null;
-		start_time: string; // ISO
-		end_time: string; // ISO
-		duration_seconds: number;
-		dataset_id: string;
-		experiment_dir: string;
-	};
-	results: Record<string, unknown>; // agent name -> EvaluationData (opaque for now)
-};
-
 export default function ResultsRunDetail({ runId, onBack }: Props) {
 	const [report, setReport] = React.useState<Report | null>(null);
 	const [loading, setLoading] = React.useState(true);
 	const [error, setError] = React.useState<string | null>(null);
+
+	// Tabs
+	const [tab, setTab] = React.useState<"dataset">("dataset"); // first tab: dataset
 
 	React.useEffect(() => {
 		let mounted = true;
@@ -57,6 +47,7 @@ export default function ResultsRunDetail({ runId, onBack }: Props) {
 			</SectionCard>
 		);
 	}
+
 	if (error || !report) {
 		return (
 			<SectionCard title="Run Details" icon={<span>📄</span>}>
@@ -79,6 +70,7 @@ export default function ResultsRunDetail({ runId, onBack }: Props) {
 
 	return (
 		<div className="space-y-6">
+			{/* Header + back */}
 			<div className="flex items-center justify-between">
 				<h2 className="text-xl font-semibold">Run Details</h2>
 				<button
@@ -90,6 +82,7 @@ export default function ResultsRunDetail({ runId, onBack }: Props) {
 				</button>
 			</div>
 
+			{/* Experiment metadata */}
 			<SectionCard title={exp.name} icon={<span>🧪</span>}>
 				<div className="grid md:grid-cols-2 gap-4 text-sm">
 					<div>
@@ -148,14 +141,53 @@ export default function ResultsRunDetail({ runId, onBack }: Props) {
 				</div>
 			</SectionCard>
 
-			{/* Placeholder for later: metrics tables/graphs */}
-			<SectionCard title="Metrics (coming soon)" icon={<span>📊</span>}>
-				<div className="text-sm text-zinc-500">
-					This section will display per-agent aggregate metrics and per-query
-					metrics.
+			{/* Tabs */}
+			<div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+				<div className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/40">
+					<nav className="flex items-center gap-1 p-1">
+						<TabBtn
+							active={tab === "dataset"}
+							onClick={() => setTab("dataset")}
+						>
+							Dataset
+						</TabBtn>
+						{/* Add more TabBtn entries later (Agents, Retrieval, Generation, Aggregate, etc.) */}
+					</nav>
 				</div>
-			</SectionCard>
+
+				<div className="p-4">
+					{tab === "dataset" && (
+						<div className="min-h-[120px]">
+							{/* Dataset tab content to be implemented */}
+						</div>
+					)}
+				</div>
+			</div>
 		</div>
+	);
+}
+
+function TabBtn({
+	active,
+	onClick,
+	children,
+}: {
+	active: boolean;
+	onClick: () => void;
+	children: React.ReactNode;
+}) {
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			className={`px-3 py-1.5 text-sm rounded-lg ${
+				active
+					? "bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-sm"
+					: "hover:bg-zinc-100 dark:hover:bg-zinc-800"
+			}`}
+		>
+			{children}
+		</button>
 	);
 }
 
