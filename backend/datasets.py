@@ -1,74 +1,59 @@
-# app/routers/datasets_content.py
+# app/routers/datasets.py
 from __future__ import annotations
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from typing import Any, Dict, List, Optional
-from pathlib import Path
-import json
 
-from app.routers.dataset_registry import DatasetRegistry  # adjust import path to your project
+from fastapi import APIRouter, HTTPException
+from pathlib import Path
+from typing import List
+import json, os
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
-# --- Models (align with your earlier Python definitions) ---
+DATASETS_ROOT = Path(os.environ.get("DATASETS_DIR", "data/datasets")).resolve()
 
-class Evidence(BaseModel):
-    doc_id: int
-    collection: str
-    fact_excerpt: str
-    other: Optional[Dict[str, Any]] = None
 
-class GroundTruthAnswer(BaseModel):
-    query_answer: str
-    supporting_evidence: List[Evidence]
+def _dataset_dir(dataset_id: str) -> Path:
+    p = (DATASETS_ROOT / dataset_id).resolve()
+    # prevent path traversal & ensure inside root
+    if DATASETS_ROOT not in p.parents and p != DATASETS_ROOT:
+        raise HTTPException(status_code=400, detail="Invalid dataset_id")
+    if not p.exists() or not p.is_dir():
+        raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found")
+    return p
 
-class TestQuery(BaseModel):
-    query_id: str
-    query: str
-    ground_truth_answer: GroundTruthAnswer
-    other: Optional[Dict[str, Any]] = None
 
-class TestSetData(BaseModel):
-    data: List[TestQuery]
+def _load_json_file(path: Path):
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {path.name}")
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load {path.name}: {e}")
 
-class IngestionDocument(BaseModel):
-    content: str
-    collection: str
-    doc_id: str
-    metadata: Dict[str, Any]
 
-class IngestionCollection(BaseModel):
-    collection_name: str
-    collection_description: str
+@router.get("", response_model=List[str])
+def list_datasets():
+    """
+    Lists dataset IDs by scanning DATASETS_DIR for directories
+    containing both corpus.json and test_set.json.
+    """
+    if not DATASETS_ROOT.exists():
+        return []
+    ids: List[str] = []
+    for d in DATASETS_ROOT.iterdir():
+        if d.is_dir() and (d / "corpus.json").exists() and (d / "test_set.json").exists():
+            ids.append(d.name)
+    ids.sort(key=str.lower)
+    return ids
 
-class IngestionDataset(BaseModel):
-    data: List[IngestionDocument]
-    collections: List[IngestionCollection]
 
-def _read_json(path: Path):
-    with path.open("r", encoding="utf-8") as f:
-        return json.load(f)
-
-@router.get("/{dataset_id}/corpus", response_model=IngestionDataset)
+@router.get("/{dataset_id}/corpus")
 def get_corpus(dataset_id: str):
-    try:
-        paths = DatasetRegistry.resolve(dataset_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Unknown dataset_id")
-    p = Path(paths.corpus_path)
-    if not p.exists():
-        raise HTTPException(status_code=404, detail="corpus.json not found")
-    data = _read_json(p)
-    return data
+    d = _dataset_dir(dataset_id)
+    return _load_json_file(d / "corpus.json")
 
-@router.get("/{dataset_id}/test_set", response_model=TestSetData)
+
+@router.get("/{dataset_id}/test_set")
 def get_test_set(dataset_id: str):
-    try:
-        paths = DatasetRegistry.resolve(dataset_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Unknown dataset_id")
-    p = Path(paths.test_set_path)
-    if not p.exists():
-        raise HTTPException(status_code=404, detail="test_set.json not found")
-    data = _read_json(p)
-    return data
+    d = _dataset_dir(dataset_id)
+    return _load_json_file(d / "test_set.json")
