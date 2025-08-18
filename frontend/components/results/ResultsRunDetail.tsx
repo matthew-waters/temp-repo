@@ -43,6 +43,21 @@ export default function ResultsRunDetail({ runId, onBack }: Props) {
 	const [selectedDoc, setSelectedDoc] =
 		React.useState<IngestionDocument | null>(null);
 
+	const openCorpusDocById = React.useCallback(
+		(docId: string | number) => {
+			if (!corpus?.data?.length) return;
+			const target = String(docId);
+			const doc = corpus.data.find((d) => String(d.doc_id) === target);
+			if (doc) {
+				setSelectedDoc(doc);
+			} else {
+				// optional: toast or console.warn
+				console.warn("Doc not found in corpus:", docId);
+			}
+		},
+		[corpus]
+	);
+
 	React.useEffect(() => {
 		let mounted = true;
 		(async () => {
@@ -249,7 +264,10 @@ export default function ResultsRunDetail({ runId, onBack }: Props) {
 							)}
 
 							{!dsLoading && !dsError && dsTab === "test" && (
-								<TestSetTable testSet={testSet} />
+								<TestSetTable
+									testSet={testSet}
+									onOpenDocById={openCorpusDocById}
+								/>
 							)}
 						</div>
 					)}
