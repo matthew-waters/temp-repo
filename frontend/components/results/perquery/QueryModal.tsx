@@ -97,35 +97,25 @@ export default function QueryModal({ row, agents }: Props) {
 								<tr>
 									<th className="text-left px-3 py-2 w-56">Metric</th>
 									<th className="text-left px-3 py-2">Value</th>
-									<th className="text-left px-3 py-2">Pass/Fail</th>
 									<th className="text-left px-3 py-2">Message</th>
 								</tr>
 							</thead>
 							<tbody>
 								{(active.metrics || []).map((m) => (
 									<tr
-										key={m.name}
+										key={m.id ?? m.name}
 										className="border-t border-zinc-200 dark:border-zinc-800 align-top"
 									>
-										<td className="px-3 py-2 font-mono text-xs">{m.name}</td>
-										<td className="px-3 py-2">{renderMetricValue(m)}</td>
-										<td className="px-3 py-2">
-											{m.passed === undefined ? (
-												<span className="text-zinc-400">—</span>
-											) : m.passed ? (
-												<span className="text-[11px] px-1.5 py-0.5 rounded bg-green-100 text-green-700">
-													pass
-												</span>
-											) : (
-												<span className="text-[11px] px-1.5 py-0.5 rounded bg-red-100 text-red-700">
-													fail
-												</span>
-											)}
+										<td className="px-3 py-2 font-mono text-xs">
+											{m.label ?? m.id ?? m.name}
 										</td>
+										<td className="px-3 py-2">{renderMetricValue(m)}</td>
 										<td className="px-3 py-2 text-xs text-zinc-600">
 											{m.message ? (
 												<span title={m.message}>
-													{truncate(m.message, 140)}
+													{m.message.length > 140
+														? m.message.slice(0, 139) + "…"
+														: m.message}
 												</span>
 											) : (
 												<span className="text-zinc-400">—</span>
@@ -135,7 +125,7 @@ export default function QueryModal({ row, agents }: Props) {
 								))}
 								{(!active.metrics || active.metrics.length === 0) && (
 									<tr>
-										<td colSpan={4} className="px-3 py-3 text-sm text-zinc-500">
+										<td colSpan={3} className="px-3 py-3 text-sm text-zinc-500">
 											No metrics recorded for this agent on this query.
 										</td>
 									</tr>
