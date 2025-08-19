@@ -3,6 +3,11 @@
 import React from "react";
 import type { MetricResult } from "../../../lib/types/results";
 import type { QueryRow } from "./PerQueryTab";
+import type {
+	RetrieverCall,
+	LCDocument,
+	LCOriginDocInfo,
+} from "../../../lib/types/retrieval";
 
 type Props = {
 	row: QueryRow;
@@ -278,63 +283,148 @@ function LLMPromptsView({ call }: { call: any }) {
 
 /* ---------------- Retriever Calls ---------------- */
 
-function RetrieverCallsList({ calls }: { calls: any[] }) {
-	if (!calls?.length) {
+function RetrieverCallsList({ calls }: { calls: RetrieverCall[] | any[] }) {
+	const arr: RetrieverCall[] = Array.isArray(calls) ? (calls as any) : [];
+
+	if (!arr.length) {
 		return (
 			<div className="text-sm text-zinc-500">No retriever calls recorded.</div>
 		);
 	}
+
 	return (
-		<div className="space-y-3">
-			{calls.map((c, idx) => {
-				const results = Array.isArray(c?.results) ? c.results : [];
+		<div className="space-y-4">
+			{arr.map((c, idx) => {
+				const results: LCDocument[] = Array.isArray(c?.results)
+					? c.results
+					: [];
 				return (
 					<div
 						key={idx}
 						className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3"
 					>
-						<div className="text-sm font-medium mb-1">
-							{c.retriever_type ? `${c.retriever_type}` : "Retriever"}{" "}
-							{c.collection_name ? `· ${c.collection_name}` : ""}
+						<div className="text-sm font-medium mb-2">
+							Retriever Call #{idx + 1}
 						</div>
-						<div className="text-xs text-zinc-500 mb-2">
-							{c.query ? (
-								<>
-									Query:{" "}
-									<span className="font-mono">{truncate(c.query, 140)}</span> ·{" "}
-								</>
-							) : null}
-							Top K: {c.top_k ?? "—"}
-							{c.timestamp ? <> · {fmtTime(c.timestamp)}</> : null}
-						</div>
-						{results.length ? (
-							<div className="space-y-2">
-								{results.slice(0, 5).map((r: any, i: number) => (
-									<div
-										key={i}
-										className="rounded border border-zinc-200 dark:border-zinc-800 p-2"
-									>
-										<div className="text-xs text-zinc-500 mb-1">
-											Doc {String(r?.doc_id ?? "—")}{" "}
-											{r?.collection ? (
-												<>
-													in <code>{r.collection}</code>
-												</>
-											) : null}
-										</div>
-										<div className="text-sm whitespace-pre-wrap max-h-32 overflow-auto">
-											{truncate(safeText(r?.content) ?? "", 400)}
-										</div>
-									</div>
-								))}
-								{results.length > 5 && (
-									<div className="text-xs text-zinc-500">
-										+{results.length - 5} more…
-									</div>
+
+						{/* Query / collection / top-k */}
+						<div className="grid md:grid-cols-3 gap-3 mb-3 text-sm">
+							<InfoBox label="Query (embedded)">
+								<div className="whitespace-pre-wrap">
+									{c?.query ?? <span className="text-zinc-500">—</span>}
+								</div>
+							</InfoBox>
+							<InfoBox label="Collection">
+								{c?.collection_name ? (
+									<code>{c.collection_name}</code>
+								) : (
+									<span className="text-zinc-500">—</span>
 								)}
-							</div>
-						) : (
+							</InfoBox>
+							<InfoBox label="Top-K">
+								{c?.top_k ?? <span className="text-zinc-500">—</span>}
+							</InfoBox>
+						</div>
+
+						{/* Results */}
+						{!results.length ? (
 							<div className="text-sm text-zinc-500">No results attached.</div>
+						) : (
+							<div className="space-y-2">
+								{results.map((r, i) => {
+									const ri = r?.metadata
+										?.retrieval_info as (LCDocument["metadata"] extends infer T
+										? T
+										: any)["retrieval_info"];
+									const od = r?.metadata?.origin_doc_info as
+										| LCOriginDocInfo
+										| undefined;
+
+									const score = ri?.score;
+									const searchQuery = ri?.search_query;
+									const chunkId = r?.id;
+									const content = r?.page_content;
+
+									return (
+										<div
+											key={i}
+											className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3"
+										>
+											{/* Top line: score, doc id, chunk id */}
+											<div className="flex flex-wrap items-center gap-3 text-xs text-zinc-600 mb-2">
+												<span>
+													Score:{" "}
+													<span className="font-mono">{score ?? "—"}</span>
+												</span>
+												<span>
+													Doc ID:{" "}
+													<span className="font-mono">{od?.doc_id ?? "—"}</span>
+												</span>
+												<span>
+													Chunk ID:{" "}
+													<span className="font-mono">{chunkId ?? "—"}</span>
+												</span>
+												{searchQuery && (
+													<span title="Search query used by retriever">
+														Search Query:{" "}
+														<span className="font-mono">{searchQuery}</span>
+													</span>
+												)}
+											</div>
+
+											<div className="grid md:grid-cols-3 gap-3">
+												{/* Document metadata */}
+												<div className="md:col-span-1">
+													<div className="text-xs text-zinc-500 mb-1">
+														Document Metadata
+													</div>
+													<div className="rounded border border-zinc-200 dark:border-zinc-800 p-2 text-xs space-y-1">
+														<MetaRow
+															label="Collection"
+															value={od?.collection}
+															code
+														/>
+														<MetaRow label="Title" value={od?.title} />
+														<MetaRow label="Author" value={od?.author} />
+														<MetaRow label="Source" value={od?.source} />
+														<MetaRow
+															label="Published"
+															value={formatDate(od?.published_at)}
+														/>
+														<MetaRow
+															label="URL"
+															value={
+																od?.url ? (
+																	<a
+																		href={od.url}
+																		target="_blank"
+																		rel="noreferrer"
+																		className="underline break-all"
+																	>
+																		{od.url}
+																	</a>
+																) : undefined
+															}
+														/>
+													</div>
+												</div>
+
+												{/* Page content */}
+												<div className="md:col-span-2">
+													<div className="text-xs text-zinc-500 mb-1">
+														Page Content
+													</div>
+													<div className="text-sm rounded border border-zinc-200 dark:border-zinc-800 p-2 whitespace-pre-wrap max-h-48 overflow-auto">
+														{content || (
+															<span className="text-zinc-500 italic">—</span>
+														)}
+													</div>
+												</div>
+											</div>
+										</div>
+									);
+								})}
+							</div>
 						)}
 					</div>
 				);
@@ -371,6 +461,54 @@ function OtherToolsList({ calls }: { calls: any[] }) {
 }
 
 /* ---------------- helpers ---------------- */
+
+function InfoBox({
+	label,
+	children,
+}: {
+	label: string;
+	children: React.ReactNode;
+}) {
+	return (
+		<div>
+			<div className="text-xs text-zinc-500 mb-1">{label}</div>
+			<div className="rounded border border-zinc-200 dark:border-zinc-800 p-2">
+				{children}
+			</div>
+		</div>
+	);
+}
+
+function MetaRow({
+	label,
+	value,
+	code = false,
+}: {
+	label: string;
+	value?: React.ReactNode;
+	code?: boolean;
+}) {
+	return (
+		<div className="flex gap-2">
+			<div className="min-w-[78px] text-zinc-500">{label}:</div>
+			<div className="flex-1 break-words">
+				{value === undefined || value === null || value === "" ? (
+					<span className="text-zinc-400">—</span>
+				) : code ? (
+					<code>{value as any}</code>
+				) : (
+					value
+				)}
+			</div>
+		</div>
+	);
+}
+
+function formatDate(iso?: string) {
+	if (!iso) return undefined;
+	const d = new Date(iso);
+	return isNaN(d.getTime()) ? iso : d.toLocaleString();
+}
 
 function renderMetricValue(m: MetricResult) {
 	if (m.value === null || m.value === undefined) {
