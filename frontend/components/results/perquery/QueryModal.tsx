@@ -9,11 +9,11 @@ type Props = {
 	agents: string[];
 };
 
-type InnerTab = "answer" | "metrics";
+type InnerTab = "metrics" | "answer" | "llm" | "retriever" | "tools";
 
 export default function QueryModal({ row, agents }: Props) {
 	const [agent, setAgent] = React.useState<string>(agents[0] || "");
-	const [tab, setTab] = React.useState<InnerTab>("answer");
+	const [tab, setTab] = React.useState<InnerTab>("metrics");
 
 	React.useEffect(() => {
 		if (!agent || !agents.includes(agent)) {
@@ -22,6 +22,12 @@ export default function QueryModal({ row, agents }: Props) {
 	}, [agents, agent]);
 
 	const active = agent ? row.agents[agent] : undefined;
+
+	// Extract call arrays from final agent state (defensive)
+	const llmCalls: any[] = (active?.final?.llm_calls ?? []) as any[];
+	const retrieverCalls: any[] = (active?.final?.retriever_calls ?? []) as any[];
+	const otherToolCalls: any[] = (active?.final?.other_tool_calls ??
+		[]) as any[];
 
 	return (
 		<div className="space-y-4">
@@ -53,24 +59,29 @@ export default function QueryModal({ row, agents }: Props) {
 				</select>
 			</div>
 
-			{/* Inner tabs */}
-			<div className="flex items-center gap-2">
+			{/* Tabs */}
+			<div className="flex items-center gap-2 flex-wrap">
+				<TabBtn active={tab === "metrics"} onClick={() => setTab("metrics")}>
+					Metrics
+				</TabBtn>
 				<TabBtn active={tab === "answer"} onClick={() => setTab("answer")}>
 					Answer / Generation
 				</TabBtn>
-				<TabBtn active={tab === "metrics"} onClick={() => setTab("metrics")}>
-					Metrics
+				<TabBtn active={tab === "llm"} onClick={() => setTab("llm")}>
+					LLM Calls
+				</TabBtn>
+				<TabBtn
+					active={tab === "retriever"}
+					onClick={() => setTab("retriever")}
+				>
+					Retriever Calls
+				</TabBtn>
+				<TabBtn active={tab === "tools"} onClick={() => setTab("tools")}>
+					Other Tool Calls
 				</TabBtn>
 			</div>
 
 			{/* Content */}
-			{tab === "answer" && (
-				// Intentionally left blank for now (as requested)
-				<div className="rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 p-6 text-sm text-zinc-500">
-					{/* (Leave blank; placeholder container only) */}
-				</div>
-			)}
-
 			{tab === "metrics" &&
 				(!active ? (
 					<div className="text-sm text-zinc-500">No data for this agent.</div>
@@ -109,7 +120,7 @@ export default function QueryModal({ row, agents }: Props) {
 										<td className="px-3 py-2 text-xs text-zinc-600">
 											{m.message ? (
 												<span title={m.message}>
-													{truncate(m.message, 120)}
+													{truncate(m.message, 140)}
 												</span>
 											) : (
 												<span className="text-zinc-400">—</span>
@@ -128,9 +139,41 @@ export default function QueryModal({ row, agents }: Props) {
 						</table>
 					</div>
 				))}
+
+			{tab === "answer" &&
+				(!active ? (
+					<div className="text-sm text-zinc-500">No data for this agent.</div>
+				) : (
+					<div className="space-y-3">
+						<div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+							<div className="text-sm font-medium mb-2">Final Answer</div>
+							{active.error ? (
+								<div className="text-sm text-red-600">
+									Error:{" "}
+									<span className="font-mono text-[12px]">{active.error}</span>
+								</div>
+							) : (
+								<div className="text-sm whitespace-pre-wrap max-h-80 overflow-auto">
+									{active.answer || (
+										<span className="text-zinc-500 italic">No answer</span>
+									)}
+								</div>
+							)}
+						</div>
+						{/* Expand later with citations, formatting, etc. */}
+					</div>
+				))}
+
+			{tab === "llm" && <LLMCallsList calls={llmCalls} />}
+
+			{tab === "retriever" && <RetrieverCallsList calls={retrieverCalls} />}
+
+			{tab === "tools" && <OtherToolsList calls={otherToolCalls} />}
 		</div>
 	);
 }
+
+/* ---------------- Tab button ---------------- */
 
 function TabBtn({
 	active,
@@ -156,6 +199,179 @@ function TabBtn({
 	);
 }
 
+/* ---------------- LLM Calls ---------------- */
+
+function LLMCallsList({ calls }: { calls: any[] }) {
+	if (!calls?.length) {
+		return <div className="text-sm text-zinc-500">No LLM calls recorded.</div>;
+	}
+	return (
+		<div className="space-y-3">
+			{calls.map((c, idx) => (
+				<div
+					key={idx}
+					className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3"
+				>
+					<div className="flex flex-wrap items-center gap-3 text-xs text-zinc-500 mb-2">
+						{c.model_name && (
+							<span>
+								Model: <code>{c.model_name}</code>
+							</span>
+						)}
+						{c.timestamp && <span>Time: {fmtTime(c.timestamp)}</span>}
+					</div>
+
+					<div className="grid md:grid-cols-2 gap-3">
+						<div>
+							<div className="text-xs font-medium mb-1">Prompt(s)</div>
+							<LLMPromptsView call={c} />
+						</div>
+						<div>
+							<div className="text-xs font-medium mb-1">Response</div>
+							<div className="text-sm rounded-lg border border-zinc-200 dark:border-zinc-800 p-2 whitespace-pre-wrap max-h-64 overflow-auto">
+								{safeText(c.response) ?? (
+									<span className="text-zinc-500 italic">—</span>
+								)}
+							</div>
+						</div>
+					</div>
+				</div>
+			))}
+		</div>
+	);
+}
+
+function LLMPromptsView({ call }: { call: any }) {
+	// supports either `prompt: string` or `prompts: BaseMessage[]`
+	if (Array.isArray(call?.prompts)) {
+		return (
+			<div className="space-y-2">
+				{call.prompts.map((m: any, i: number) => {
+					const role = m?.role || m?._type || m?.type || "message";
+					const content = extractMessageContent(m?.content);
+					return (
+						<div
+							key={i}
+							className="rounded border border-zinc-200 dark:border-zinc-800 p-2"
+						>
+							<div className="text-[11px] text-zinc-500 mb-1 uppercase tracking-wide">
+								{String(role)}
+							</div>
+							<div className="text-sm whitespace-pre-wrap">
+								{content ?? <span className="text-zinc-500 italic">—</span>}
+							</div>
+						</div>
+					);
+				})}
+			</div>
+		);
+	}
+	// string prompt
+	return (
+		<div className="text-sm rounded-lg border border-zinc-200 dark:border-zinc-800 p-2 whitespace-pre-wrap max-h-64 overflow-auto">
+			{safeText(call?.prompt) ?? (
+				<span className="text-zinc-500 italic">—</span>
+			)}
+		</div>
+	);
+}
+
+/* ---------------- Retriever Calls ---------------- */
+
+function RetrieverCallsList({ calls }: { calls: any[] }) {
+	if (!calls?.length) {
+		return (
+			<div className="text-sm text-zinc-500">No retriever calls recorded.</div>
+		);
+	}
+	return (
+		<div className="space-y-3">
+			{calls.map((c, idx) => {
+				const results = Array.isArray(c?.results) ? c.results : [];
+				return (
+					<div
+						key={idx}
+						className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3"
+					>
+						<div className="text-sm font-medium mb-1">
+							{c.retriever_type ? `${c.retriever_type}` : "Retriever"}{" "}
+							{c.collection_name ? `· ${c.collection_name}` : ""}
+						</div>
+						<div className="text-xs text-zinc-500 mb-2">
+							{c.query ? (
+								<>
+									Query:{" "}
+									<span className="font-mono">{truncate(c.query, 140)}</span> ·{" "}
+								</>
+							) : null}
+							Top K: {c.top_k ?? "—"}
+							{c.timestamp ? <> · {fmtTime(c.timestamp)}</> : null}
+						</div>
+						{results.length ? (
+							<div className="space-y-2">
+								{results.slice(0, 5).map((r: any, i: number) => (
+									<div
+										key={i}
+										className="rounded border border-zinc-200 dark:border-zinc-800 p-2"
+									>
+										<div className="text-xs text-zinc-500 mb-1">
+											Doc {String(r?.doc_id ?? "—")}{" "}
+											{r?.collection ? (
+												<>
+													in <code>{r.collection}</code>
+												</>
+											) : null}
+										</div>
+										<div className="text-sm whitespace-pre-wrap max-h-32 overflow-auto">
+											{truncate(safeText(r?.content) ?? "", 400)}
+										</div>
+									</div>
+								))}
+								{results.length > 5 && (
+									<div className="text-xs text-zinc-500">
+										+{results.length - 5} more…
+									</div>
+								)}
+							</div>
+						) : (
+							<div className="text-sm text-zinc-500">No results attached.</div>
+						)}
+					</div>
+				);
+			})}
+		</div>
+	);
+}
+
+/* ---------------- Other Tool Calls ---------------- */
+
+function OtherToolsList({ calls }: { calls: any[] }) {
+	if (!calls?.length) {
+		return (
+			<div className="text-sm text-zinc-500">No other tool calls recorded.</div>
+		);
+	}
+	return (
+		<div className="space-y-3">
+			{calls.map((c, idx) => (
+				<div
+					key={idx}
+					className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3"
+				>
+					<div className="text-sm font-medium mb-2">
+						{c.tool_name || c.name || "Tool Call"}
+					</div>
+					<pre className="text-xs rounded-lg border border-zinc-200 dark:border-zinc-800 p-2 overflow-auto">
+						{safeJson(c)}
+					</pre>
+				</div>
+			))}
+		</div>
+	);
+}
+
+/* ---------------- helpers ---------------- */
+
 function renderMetricValue(m: MetricResult) {
 	if (m.value === null || m.value === undefined) {
 		return m.passed === undefined ? "—" : m.passed ? "✅" : "❌";
@@ -175,4 +391,57 @@ function renderMetricValue(m: MetricResult) {
 function truncate(s: string, n: number) {
 	if (!s) return "";
 	return s.length > n ? s.slice(0, n - 1) + "…" : s;
+}
+
+function fmtTime(t: any) {
+	try {
+		const d = new Date(t);
+		if (isNaN(d.getTime())) return String(t);
+		return d.toLocaleString();
+	} catch {
+		return String(t ?? "");
+	}
+}
+
+function safeText(v: any): string | null {
+	if (v === null || v === undefined) return null;
+	if (typeof v === "string") return v;
+	try {
+		return JSON.stringify(v, null, 2);
+	} catch {
+		return String(v);
+	}
+}
+
+function extractMessageContent(content: any): string | null {
+	if (content == null) return null;
+	if (typeof content === "string") return content;
+	// LangChain messages sometimes store content as list of parts
+	if (Array.isArray(content)) {
+		// join string-like parts
+		const parts = content.map((p) => {
+			if (typeof p === "string") return p;
+			if (p?.text) return String(p.text);
+			if (p?.content) return String(p.content);
+			return JSON.stringify(p);
+		});
+		return parts.join("\n");
+	}
+	if (typeof content === "object") {
+		if (content.text) return String(content.text);
+		if (content.content) return String(content.content);
+	}
+	try {
+		return JSON.stringify(content, null, 2);
+	} catch {
+		return String(content);
+	}
+}
+
+function safeJson(obj: any): string {
+	try {
+		return JSON.stringify(obj, null, 2);
+	} catch {
+		return String(obj);
+	}
 }
