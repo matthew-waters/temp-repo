@@ -7,98 +7,129 @@ import type { QueryRow } from "./PerQueryTab";
 type Props = {
 	row: QueryRow;
 	agents: string[];
-	baseline: string; // agent name
-	onChangeBaseline: (a: string) => void;
 };
 
-type TabKey = "compare" | "metrics" | "traces";
+type AgentTabKey = string;
 
-export default function QueryModal({
-	row,
-	agents,
-	baseline,
-	onChangeBaseline,
-}: Props) {
-	const [tab, setTab] = React.useState<TabKey>("compare");
+export default function QueryModal({ row, agents }: Props) {
+	const [tab, setTab] = React.useState<AgentTabKey>(agents[0] || "");
 
-	// Union of metric names across agents for this query
-	const metricNames = React.useMemo(() => {
-		const set = new Set<string>();
-		for (const a of agents) {
-			row.agents[a]?.metrics?.forEach((m) => m?.name && set.add(m.name));
+	React.useEffect(() => {
+		// If agent list changes or first agent missing, reset tab
+		if (!tab || !agents.includes(tab)) {
+			setTab(agents[0] || "");
 		}
-		return Array.from(set).sort((x, y) => x.localeCompare(y));
-	}, [row, agents]);
+	}, [agents, tab]);
 
-	const baselineMetrics = React.useMemo(() => {
-		const ms = row.agents[baseline]?.metrics || [];
-		const map = new Map<string, MetricResult>();
-		ms.forEach((m) => map.set(m.name, m));
-		return map;
-	}, [row, baseline]);
+	const active = tab ? row.agents[tab] : undefined;
 
 	return (
 		<div className="space-y-4">
-			{/* Header controls inside modal */}
-			<div className="flex flex-wrap items-center gap-2">
-				<div className="text-sm text-zinc-500">
+			{/* Query header: make the query itself clear */}
+			<div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+				<div className="text-xs text-zinc-500 mb-1">
 					Query ID: <span className="font-mono">{String(row.query_id)}</span>
 				</div>
-				<div className="text-sm truncate" title={row.query}>
-					{row.query}
-				</div>
-				<div className="ml-auto flex items-center gap-2 text-sm">
-					<span className="text-zinc-500">Baseline:</span>
-					<select
-						className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-sm"
-						value={baseline}
-						onChange={(e) => onChangeBaseline(e.target.value)}
-					>
-						{agents.map((a) => (
-							<option key={a} value={a}>
-								{a}
-							</option>
-						))}
-					</select>
+				<div className="text-sm md:text-base whitespace-pre-wrap">
+					{row.query || (
+						<span className="text-zinc-500 italic">No query text</span>
+					)}
 				</div>
 			</div>
 
-			{/* Tabs */}
-			<div className="flex items-center gap-2">
-				<SubTab active={tab === "compare"} onClick={() => setTab("compare")}>
-					Compare
-				</SubTab>
-				<SubTab active={tab === "metrics"} onClick={() => setTab("metrics")}>
-					Metrics
-				</SubTab>
-				<SubTab active={tab === "traces"} onClick={() => setTab("traces")}>
-					Traces
-				</SubTab>
+			{/* Agent tabs */}
+			<div className="flex flex-wrap items-center gap-2">
+				{agents.map((a) => (
+					<AgentTab key={a} active={tab === a} onClick={() => setTab(a)}>
+						{a}
+					</AgentTab>
+				))}
 			</div>
 
-			{/* Content */}
-			{tab === "compare" && <CompareView row={row} agents={agents} />}
+			{/* Active agent content */}
+			{!active ? (
+				<div className="text-sm text-zinc-500">No data for this agent.</div>
+			) : (
+				<div className="space-y-4">
+					{/* Answer / Error */}
+					<div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
+						<div className="text-sm font-medium mb-2">Answer</div>
+						{active.error ? (
+							<div className="text-sm text-red-600">
+								Error:{" "}
+								<span className="font-mono text-[12px]">{active.error}</span>
+							</div>
+						) : (
+							<div className="text-sm whitespace-pre-wrap max-h-64 overflow-auto">
+								{active.answer || (
+									<span className="text-zinc-500 italic">No answer</span>
+								)}
+							</div>
+						)}
+					</div>
 
-			{tab === "metrics" && (
-				<MetricsMatrix
-					row={row}
-					agents={agents}
-					metricNames={metricNames}
-					baseline={baseline}
-					baselineMetrics={baselineMetrics}
-				/>
-			)}
+					{/* Metrics table */}
+					<div className="rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+						<table className="w-full text-sm">
+							<thead className="bg-zinc-50 dark:bg-zinc-900 text-xs text-zinc-500">
+								<tr>
+									<th className="text-left px-3 py-2 w-56">Metric</th>
+									<th className="text-left px-3 py-2">Value</th>
+									<th className="text-left px-3 py-2">Pass/Fail</th>
+									<th className="text-left px-3 py-2">Message</th>
+								</tr>
+							</thead>
+							<tbody>
+								{(active.metrics || []).map((m) => (
+									<tr
+										key={m.name}
+										className="border-t border-zinc-200 dark:border-zinc-800 align-top"
+									>
+										<td className="px-3 py-2 font-mono text-xs">{m.name}</td>
+										<td className="px-3 py-2">{renderMetricValue(m)}</td>
+										<td className="px-3 py-2">
+											{m.passed === undefined ? (
+												<span className="text-zinc-400">—</span>
+											) : m.passed ? (
+												<span className="text-[11px] px-1.5 py-0.5 rounded bg-green-100 text-green-700">
+													pass
+												</span>
+											) : (
+												<span className="text-[11px] px-1.5 py-0.5 rounded bg-red-100 text-red-700">
+													fail
+												</span>
+											)}
+										</td>
+										<td className="px-3 py-2 text-xs text-zinc-600">
+											{m.message ? (
+												<span title={m.message}>
+													{truncate(m.message, 120)}
+												</span>
+											) : (
+												<span className="text-zinc-400">—</span>
+											)}
+										</td>
+									</tr>
+								))}
+								{(!active.metrics || active.metrics.length === 0) && (
+									<tr>
+										<td colSpan={4} className="px-3 py-3 text-sm text-zinc-500">
+											No metrics recorded for this agent on this query.
+										</td>
+									</tr>
+								)}
+							</tbody>
+						</table>
+					</div>
 
-			{tab === "traces" && (
-				<div className="text-sm text-zinc-500">
-					Traces view coming soon (LLM calls, retrieval calls, tool calls).
+					{/* (Optional) raw metadata/debug later: traces, retrieved chunks, etc. */}
 				</div>
 			)}
 		</div>
 	);
 }
 
-function SubTab({
+function AgentTab({
 	active,
 	onClick,
 	children,
@@ -122,161 +153,11 @@ function SubTab({
 	);
 }
 
-/* ---------------- Compare view ---------------- */
-
-function CompareView({ row, agents }: { row: QueryRow; agents: string[] }) {
-	const cols = Math.min(3, Math.max(1, agents.length));
-	return (
-		<div className="space-y-3">
-			<div className="grid md:grid-cols-3 gap-3">
-				{agents.map((a) => {
-					const ap = row.agents[a];
-					const hasError = !!ap?.error;
-					const answer = ap?.answer;
-					return (
-						<div
-							key={a}
-							className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3"
-						>
-							<div className="text-sm font-semibold mb-1">{a}</div>
-							{hasError ? (
-								<div className="text-sm text-red-600">
-									Error:{" "}
-									<span className="font-mono text-[12px]">{ap?.error}</span>
-								</div>
-							) : (
-								<div className="text-sm whitespace-pre-wrap max-h-48 overflow-auto">
-									{answer || (
-										<span className="text-zinc-500 italic">No answer</span>
-									)}
-								</div>
-							)}
-							{/* Mini chips for top 3 metrics (by name) */}
-							<div className="mt-2 flex flex-wrap gap-1">
-								{(ap?.metrics || []).slice(0, 3).map((m) => (
-									<span
-										key={m.name}
-										className="text-[11px] px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800"
-									>
-										{m.name}: {renderMetricValue(m)}
-									</span>
-								))}
-							</div>
-						</div>
-					);
-				})}
-			</div>
-		</div>
-	);
-}
-
-/* ---------------- Metrics matrix ---------------- */
-
-function MetricsMatrix({
-	row,
-	agents,
-	metricNames,
-	baseline,
-	baselineMetrics,
-}: {
-	row: QueryRow;
-	agents: string[];
-	metricNames: string[];
-	baseline: string;
-	baselineMetrics: Map<string, any>;
-}) {
-	return (
-		<div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
-			<table className="w-full text-sm">
-				<thead className="bg-zinc-50 dark:bg-zinc-900 text-xs text-zinc-500">
-					<tr>
-						<th className="text-left px-3 py-2 w-56">Metric</th>
-						{agents.map((a) => (
-							<th key={a} className="text-left px-3 py-2">
-								{a}
-							</th>
-						))}
-						<th className="text-left px-3 py-2">Δ vs {baseline}</th>
-					</tr>
-				</thead>
-				<tbody>
-					{metricNames.map((name) => (
-						<tr
-							key={name}
-							className="border-t border-zinc-200 dark:border-zinc-800 align-top"
-						>
-							<td className="px-3 py-2 font-mono text-xs">{name}</td>
-							{agents.map((a) => {
-								const cell = (row.agents[a]?.metrics || []).find(
-									(m) => m.name === name
-								);
-								return (
-									<td key={a} className="px-3 py-2">
-										{cell ? (
-											<div className="flex items-center gap-2">
-												<span>{renderMetricValue(cell)}</span>
-												{cell.passed !== undefined && (
-													<span
-														className={`text-[10px] px-1.5 py-0.5 rounded ${
-															cell.passed
-																? "bg-green-100 text-green-700"
-																: "bg-red-100 text-red-700"
-														}`}
-													>
-														{cell.passed ? "pass" : "fail"}
-													</span>
-												)}
-												{cell.message && (
-													<span
-														className="text-[11px] text-zinc-500"
-														title={cell.message}
-													>
-														ℹ︎
-													</span>
-												)}
-											</div>
-										) : (
-											<span className="text-zinc-400">—</span>
-										)}
-									</td>
-								);
-							})}
-							{/* Δ vs baseline (numeric only; shows first agent with numeric value minus baseline) */}
-							<td className="px-3 py-2">
-								{renderDeltaVsBaseline(
-									row,
-									agents,
-									name,
-									baseline,
-									baselineMetrics
-								)}
-							</td>
-						</tr>
-					))}
-					{metricNames.length === 0 && (
-						<tr>
-							<td
-								colSpan={agents.length + 2}
-								className="px-3 py-3 text-sm text-zinc-500"
-							>
-								No metrics recorded for this query.
-							</td>
-						</tr>
-					)}
-				</tbody>
-			</table>
-		</div>
-	);
-}
-
-/* ---------------- helpers ---------------- */
-
 function renderMetricValue(m: MetricResult) {
 	if (m.value === null || m.value === undefined) {
 		return m.passed === undefined ? "—" : m.passed ? "✅" : "❌";
 	}
 	if (typeof m.value === "number") {
-		// format 0.### sensibly
 		const v = m.value;
 		if (Math.abs(v) >= 100) return v.toFixed(0);
 		if (Math.abs(v) >= 10) return v.toFixed(1);
@@ -285,57 +166,10 @@ function renderMetricValue(m: MetricResult) {
 	if (typeof m.value === "boolean") {
 		return m.value ? "✅" : "❌";
 	}
-	// string or other
 	return String(m.value);
 }
 
-function asNum(v: any): number | null {
-	if (typeof v === "number") return v;
-	if (typeof v === "string" && v.trim() !== "" && !Number.isNaN(Number(v)))
-		return Number(v);
-	return null;
-}
-
-function renderDeltaVsBaseline(
-	row: QueryRow,
-	agents: string[],
-	metricName: string,
-	baseline: string,
-	baselineMetrics: Map<string, MetricResult>
-) {
-	const b = baselineMetrics.get(metricName);
-	const bVal = b ? asNum(b.value) : null;
-	if (bVal === null) return <span className="text-zinc-400">—</span>;
-
-	// For simplicity, show Δ for the first *non-baseline* agent with a numeric value.
-	// (You can expand to one Δ per agent if you prefer.)
-	for (const a of agents) {
-		if (a === baseline) continue;
-		const m = (row.agents[a]?.metrics || []).find((x) => x.name === metricName);
-		const v = m ? asNum(m.value) : null;
-		if (v === null) continue;
-		const delta = v - bVal;
-		const sign = delta > 0 ? "+" : "";
-		const cls =
-			delta > 0
-				? "text-green-600"
-				: delta < 0
-				? "text-red-600"
-				: "text-zinc-600";
-		return (
-			<span className={`font-mono ${cls}`}>
-				{sign}
-				{formatDelta(delta)}
-			</span>
-		);
-	}
-	return <span className="text-zinc-400">—</span>;
-}
-
-function formatDelta(x: number) {
-	const ax = Math.abs(x);
-	if (ax >= 100) return x.toFixed(0);
-	if (ax >= 10) return x.toFixed(1);
-	const s = x.toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
-	return s === "-0" ? "0" : s;
+function truncate(s: string, n: number) {
+	if (!s) return "";
+	return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }

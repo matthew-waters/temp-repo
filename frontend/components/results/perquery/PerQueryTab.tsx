@@ -9,7 +9,7 @@ type AgentPerQuery = {
 	answer?: string | null;
 	error?: string | null;
 	metrics: MetricResult[];
-	final?: any; // CoreAgentState (ignored typing per your instruction)
+	final?: any; // CoreAgentState (intentionally 'any' per your note)
 };
 
 export type QueryRow = {
@@ -25,7 +25,6 @@ type Props = {
 export default function PerQueryTab({ report }: Props) {
 	const [filter, setFilter] = React.useState("");
 	const [selected, setSelected] = React.useState<QueryRow | null>(null);
-	const [baseline, setBaseline] = React.useState<string | null>(null);
 
 	const agentNames = React.useMemo(
 		() => Object.keys(report.results || {}),
@@ -47,6 +46,7 @@ export default function PerQueryTab({ report }: Props) {
 					});
 				}
 				const row = byId.get(key)!;
+				// prefer non-empty query text if present
 				row.query = row.query || r.query;
 				row.agents[agent] = {
 					answer: (r.final_agent_state as any)?.answer ?? null,
@@ -64,10 +64,6 @@ export default function PerQueryTab({ report }: Props) {
 			return String(a.query_id).localeCompare(String(b.query_id));
 		});
 	}, [agentNames, report]);
-
-	React.useEffect(() => {
-		if (!baseline && agentNames.length) setBaseline(agentNames[0] || null);
-	}, [agentNames, baseline]);
 
 	const filtered = React.useMemo(() => {
 		if (!filter.trim()) return rows;
@@ -89,20 +85,6 @@ export default function PerQueryTab({ report }: Props) {
 					placeholder="Search by query id or text…"
 					className="w-full md:w-80 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-zinc-400/40"
 				/>
-				<div className="ml-auto flex items-center gap-2 text-sm">
-					<span className="text-zinc-500">Baseline:</span>
-					<select
-						className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-sm"
-						value={baseline ?? ""}
-						onChange={(e) => setBaseline(e.target.value || null)}
-					>
-						{agentNames.map((a) => (
-							<option key={a} value={a}>
-								{a}
-							</option>
-						))}
-					</select>
-				</div>
 			</div>
 
 			{/* Table */}
@@ -120,7 +102,7 @@ export default function PerQueryTab({ report }: Props) {
 								key={String(r.query_id)}
 								className="border-t border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900 cursor-pointer"
 								onClick={() => setSelected(r)}
-								title="Click to compare agents for this query"
+								title="Click to view per-agent details for this query"
 							>
 								<td className="px-3 py-2 font-mono text-xs">
 									{String(r.query_id)}
@@ -148,20 +130,10 @@ export default function PerQueryTab({ report }: Props) {
 			<Modal
 				open={!!selected}
 				onClose={() => setSelected(null)}
-				title={
-					selected ? (
-						<div className="truncate">Query {String(selected.query_id)}</div>
-					) : null
-				}
+				// Title: keep generic to avoid repeating the ID here
+				title={<div className="font-semibold">Per-Query Comparison</div>}
 			>
-				{selected && baseline && (
-					<QueryModal
-						row={selected}
-						agents={agentNames}
-						baseline={baseline}
-						onChangeBaseline={setBaseline}
-					/>
-				)}
+				{selected && <QueryModal row={selected} agents={agentNames} />}
 			</Modal>
 		</div>
 	);
