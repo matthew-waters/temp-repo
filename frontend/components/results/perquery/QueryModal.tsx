@@ -101,28 +101,29 @@ export default function QueryModal({ row, agents }: Props) {
 								</tr>
 							</thead>
 							<tbody>
-								{(active.metrics || []).map((m) => (
+								{(active.metrics || []).map((m, i) => (
 									<tr
-										key={m.id ?? m.name}
+										key={`${m?.name ?? "metric"}-${i}`}
 										className="border-t border-zinc-200 dark:border-zinc-800 align-top"
 									>
 										<td className="px-3 py-2 font-mono text-xs">
-											{m.label ?? m.id ?? m.name}
+											{m?.name ?? "Metric"}
 										</td>
 										<td className="px-3 py-2">{renderMetricValue(m)}</td>
 										<td className="px-3 py-2 text-xs text-zinc-600">
-											{m.message ? (
-												<span title={m.message}>
-													{m.message.length > 140
-														? m.message.slice(0, 139) + "…"
-														: m.message}
-												</span>
+											{m?.message ? (
+												m.message.length > 140 ? (
+													m.message.slice(0, 139) + "…"
+												) : (
+													m.message
+												)
 											) : (
 												<span className="text-zinc-400">—</span>
 											)}
 										</td>
 									</tr>
 								))}
+
 								{(!active.metrics || active.metrics.length === 0) && (
 									<tr>
 										<td colSpan={3} className="px-3 py-3 text-sm text-zinc-500">
