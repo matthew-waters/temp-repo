@@ -9,23 +9,23 @@ type Props = {
 	agents: string[];
 };
 
-type AgentTabKey = string;
+type InnerTab = "answer" | "metrics";
 
 export default function QueryModal({ row, agents }: Props) {
-	const [tab, setTab] = React.useState<AgentTabKey>(agents[0] || "");
+	const [agent, setAgent] = React.useState<string>(agents[0] || "");
+	const [tab, setTab] = React.useState<InnerTab>("answer");
 
 	React.useEffect(() => {
-		// If agent list changes or first agent missing, reset tab
-		if (!tab || !agents.includes(tab)) {
-			setTab(agents[0] || "");
+		if (!agent || !agents.includes(agent)) {
+			setAgent(agents[0] || "");
 		}
-	}, [agents, tab]);
+	}, [agents, agent]);
 
-	const active = tab ? row.agents[tab] : undefined;
+	const active = agent ? row.agents[agent] : undefined;
 
 	return (
 		<div className="space-y-4">
-			{/* Query header: make the query itself clear */}
+			{/* Query header */}
 			<div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
 				<div className="text-xs text-zinc-500 mb-1">
 					Query ID: <span className="font-mono">{String(row.query_id)}</span>
@@ -37,38 +37,44 @@ export default function QueryModal({ row, agents }: Props) {
 				</div>
 			</div>
 
-			{/* Agent tabs */}
-			<div className="flex flex-wrap items-center gap-2">
-				{agents.map((a) => (
-					<AgentTab key={a} active={tab === a} onClick={() => setTab(a)}>
-						{a}
-					</AgentTab>
-				))}
+			{/* Agent selector */}
+			<div className="flex items-center gap-2">
+				<div className="text-sm text-zinc-500">Agent:</div>
+				<select
+					className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-2 py-1 text-sm"
+					value={agent}
+					onChange={(e) => setAgent(e.target.value)}
+				>
+					{agents.map((a) => (
+						<option key={a} value={a}>
+							{a}
+						</option>
+					))}
+				</select>
 			</div>
 
-			{/* Active agent content */}
-			{!active ? (
-				<div className="text-sm text-zinc-500">No data for this agent.</div>
-			) : (
-				<div className="space-y-4">
-					{/* Answer / Error */}
-					<div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
-						<div className="text-sm font-medium mb-2">Answer</div>
-						{active.error ? (
-							<div className="text-sm text-red-600">
-								Error:{" "}
-								<span className="font-mono text-[12px]">{active.error}</span>
-							</div>
-						) : (
-							<div className="text-sm whitespace-pre-wrap max-h-64 overflow-auto">
-								{active.answer || (
-									<span className="text-zinc-500 italic">No answer</span>
-								)}
-							</div>
-						)}
-					</div>
+			{/* Inner tabs */}
+			<div className="flex items-center gap-2">
+				<TabBtn active={tab === "answer"} onClick={() => setTab("answer")}>
+					Answer / Generation
+				</TabBtn>
+				<TabBtn active={tab === "metrics"} onClick={() => setTab("metrics")}>
+					Metrics
+				</TabBtn>
+			</div>
 
-					{/* Metrics table */}
+			{/* Content */}
+			{tab === "answer" && (
+				// Intentionally left blank for now (as requested)
+				<div className="rounded-xl border border-dashed border-zinc-300 dark:border-zinc-700 p-6 text-sm text-zinc-500">
+					{/* (Leave blank; placeholder container only) */}
+				</div>
+			)}
+
+			{tab === "metrics" &&
+				(!active ? (
+					<div className="text-sm text-zinc-500">No data for this agent.</div>
+				) : (
 					<div className="rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
 						<table className="w-full text-sm">
 							<thead className="bg-zinc-50 dark:bg-zinc-900 text-xs text-zinc-500">
@@ -121,15 +127,12 @@ export default function QueryModal({ row, agents }: Props) {
 							</tbody>
 						</table>
 					</div>
-
-					{/* (Optional) raw metadata/debug later: traces, retrieved chunks, etc. */}
-				</div>
-			)}
+				))}
 		</div>
 	);
 }
 
-function AgentTab({
+function TabBtn({
 	active,
 	onClick,
 	children,

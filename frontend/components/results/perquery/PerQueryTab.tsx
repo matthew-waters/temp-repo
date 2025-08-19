@@ -9,7 +9,7 @@ type AgentPerQuery = {
 	answer?: string | null;
 	error?: string | null;
 	metrics: MetricResult[];
-	final?: any; // CoreAgentState (intentionally 'any' per your note)
+	final?: any; // CoreAgentState
 };
 
 export type QueryRow = {
@@ -31,7 +31,6 @@ export default function PerQueryTab({ report }: Props) {
 		[report]
 	);
 
-	// Build per-query rows across all agents
 	const rows = React.useMemo<QueryRow[]>(() => {
 		const byId = new Map<string, QueryRow>();
 		for (const agent of agentNames) {
@@ -46,7 +45,6 @@ export default function PerQueryTab({ report }: Props) {
 					});
 				}
 				const row = byId.get(key)!;
-				// prefer non-empty query text if present
 				row.query = row.query || r.query;
 				row.agents[agent] = {
 					answer: (r.final_agent_state as any)?.answer ?? null,
@@ -56,7 +54,6 @@ export default function PerQueryTab({ report }: Props) {
 				};
 			}
 		}
-		// Sort by numeric-ish id if possible, else lexicographically
 		return Array.from(byId.values()).sort((a, b) => {
 			const ax = Number(a.query_id),
 				bx = Number(b.query_id);
@@ -77,7 +74,6 @@ export default function PerQueryTab({ report }: Props) {
 
 	return (
 		<div className="space-y-4">
-			{/* Controls */}
 			<div className="flex flex-wrap items-center gap-2">
 				<input
 					value={filter}
@@ -87,7 +83,6 @@ export default function PerQueryTab({ report }: Props) {
 				/>
 			</div>
 
-			{/* Table */}
 			<div className="rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden">
 				<table className="w-full text-sm">
 					<thead className="bg-zinc-50 dark:bg-zinc-900 text-xs text-zinc-500">
@@ -126,12 +121,11 @@ export default function PerQueryTab({ report }: Props) {
 				</table>
 			</div>
 
-			{/* Modal */}
 			<Modal
 				open={!!selected}
 				onClose={() => setSelected(null)}
-				// Title: keep generic to avoid repeating the ID here
 				title={<div className="font-semibold">Per-Query Comparison</div>}
+				size="xl" // ← larger modal
 			>
 				{selected && <QueryModal row={selected} agents={agentNames} />}
 			</Modal>
